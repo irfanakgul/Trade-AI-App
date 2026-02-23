@@ -205,3 +205,29 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+.env
+
+# Mac
+.DS_Store
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
+
+# PySpark temp
+metastore_db/
+spark-warehouse/
