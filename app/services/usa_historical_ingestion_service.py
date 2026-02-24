@@ -39,6 +39,7 @@ class UsaHistoricalIngestionService:
         self.provider = provider
         self.cfg = config
         self._sem = asyncio.Semaphore(self.cfg.max_concurrent_symbols)
+        self.permanently_failed_symbols: List[str] = []
 
     async def run(
         self,
@@ -51,19 +52,25 @@ class UsaHistoricalIngestionService:
             print("No in-scope USA symbols found.")
             return
 
+        # Reset permanently failed list on each run
+        self.permanently_failed_symbols = []
+
+        total = len(symbols)
         start_dt_default = datetime.strptime(start_date, "%Y-%m-%d").date()
         end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else date.today()
 
-        remaining = symbols
+        remaining = [(i + 1, s) for i, s in enumerate(symbols)]
         round_idx = 0
 
         while True:
             round_idx += 1
-            failed: List[str] = []
+            failed: List[tuple[int, str]] = []
 
             tasks = [
                 asyncio.create_task(
                     self._process_symbol(
+                        idx=idx,
+                        total=total,
                         symbol=s,
                         use_db_last_timestamp=use_db_last_timestamp,
                         default_start=start_dt_default,
@@ -71,7 +78,7 @@ class UsaHistoricalIngestionService:
                         failed_out=failed,
                     )
                 )
-                for s in remaining
+                for (idx, s) in remaining
             ]
             await asyncio.gather(*tasks)
 
@@ -81,23 +88,20 @@ class UsaHistoricalIngestionService:
 
             print(f"[USA] Round {round_idx} finished. failed_symbols={len(failed)}")
 
-            # Stop if we've exhausted retry rounds
+            # Retry exhausted
             if round_idx > (1 + self.cfg.symbol_level_retries):
                 print(f"[USA] Exhausted retries. permanently_failed={len(failed)}")
-                for s in failed:
-                    # Best-effort logging; do not crash the job
-                    try:
-                        self.repo.log_ingestion_error(
-                            schema=self.cfg.error_schema,
-                            table=self.cfg.error_table,
-                            job_name=self.cfg.job_name,
-                            symbol=s,
-                            exchange="USA",
-                            error_type="SymbolRetryExhausted",
-                            error_message="Symbol failed after retry rounds.",
-                        )
-                    except Exception:
-                        pass
+
+                # Store permanently failed symbols for fallback usage
+                self.permanently_failed_symbols = [s for (_, s) in failed]
+
+                for idx, s in failed:
+                    self._log_permanent_failure(
+                        symbol=s,
+                        error_type="SymbolRetryExhausted",
+                        error_message="Symbol failed after retry rounds.",
+                    )
+
                 break
 
             remaining = failed
@@ -105,11 +109,15 @@ class UsaHistoricalIngestionService:
 
     async def _process_symbol(
         self,
+        idx: int,
+        total: int,
         symbol: str,
         use_db_last_timestamp: bool,
         default_start: date,
         end_dt: date,
-        failed_out: List[str],
+        failed_out: List[tuple[int, str]],
+        attempted_rows = 0,
+        inserted_rows = 0
     ) -> None:
         async with self._sem:
             try:
@@ -134,11 +142,15 @@ class UsaHistoricalIngestionService:
                         conflict_column="ROW_ID",
                     )
 
-                print(f"[USA] {symbol}: done. attempted_rows={total_attempted} start={start_dt} end={end_dt}")
+                print(
+                    f"[USA {idx}/{total}] {symbol}: done. "
+                    f"attempted_rows={attempted_rows} inserted_rows={inserted_rows} "
+                    f"start={start_dt} end={end_dt}"
+                )
 
             except Exception as e:
                 failed_out.append(symbol)
-                print(f"[USA] {symbol}: failed with error: {repr(e)}")
+                print(f"[USA {idx}/{total}] {symbol}: failed with error: {repr(e)}")
                 # Optional: log every failure attempt (not only final)
                 try:
                     self.repo.log_ingestion_error(

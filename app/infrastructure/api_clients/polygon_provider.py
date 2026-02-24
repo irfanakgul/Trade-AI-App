@@ -85,21 +85,25 @@ class PolygonProvider(MarketDataProvider):
                     return resp.json()
 
                 if resp.status_code == 429:
-                    # Polygon rate limit; wait longer
                     await asyncio.sleep(60.0)
                     continue
 
+                if resp.status_code in (403, 401):
+                    # Treat as retriable (per user request). Often permanent, but we'll retry with backoff.
+                    if attempt >= self.max_retries:
+                        resp.raise_for_status()
+                    await asyncio.sleep(self._backoff(attempt) + 10.0)
+                    continue
+
                 if 500 <= resp.status_code < 600:
-                    # Retry on server errors
                     if attempt >= self.max_retries:
                         resp.raise_for_status()
                     await asyncio.sleep(self._backoff(attempt))
                     continue
 
-                # Other non-200 errors: do not loop forever
                 resp.raise_for_status()
 
-            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError) as e:
+            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError,httpx.ReadError,) as e:
                 if attempt >= self.max_retries:
                     raise e
                 await asyncio.sleep(self._backoff(attempt))
