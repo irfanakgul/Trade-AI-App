@@ -11,12 +11,15 @@ from app.services.usa_historical_ingestion_service import UsaHistoricalIngestion
 
 
 async def main():
+    #Step-1: load parameters from env
     load_dotenv()
 
+    # Step-2: load ddb connection
     db = Database()
     engine = db.connect()
     repo = PostgresRepository(engine)
 
+    # Step-3: update usa data
     provider = PolygonProvider(api_key=os.environ["POLYGON_API_KEY"])
     svc = UsaHistoricalIngestionService(repo=repo, provider=provider)
 
@@ -25,6 +28,19 @@ async def main():
         start_date="2026-01-01",      # Used only if flag is False or last_ts is NULL
         end_date=None,               # None => today
     )
+
+    # Step-4: delete usa data if it is older than 1 year (takes from highest dataset if older)
+    deleted = repo.trim_history_by_peak_or_lookback(
+        schema="bronze",
+        table="usa_1min_high_filtered",
+        symbol_col="SYMBOL",
+        ts_col="TIMESTAMP",
+        high_col="HIGH",
+        lookback_days=365,
+        reference_days_ago=1,  # yesterday-based
+    )
+    print(f"[USA] trim completed. deleted_rows={deleted}")
+
 
 
 if __name__ == "__main__":

@@ -110,3 +110,96 @@ def log_ingestion_error(
                 "error_message": error_message,
             },
         )
+
+def trim_history_by_peak_or_lookback(
+    self,
+    schema: str,
+    table: str,
+    symbol_col: str = "SYMBOL",
+    ts_col: str = "TIMESTAMP",
+    high_col: str = "HIGH",
+    lookback_days: int = 365,
+    reference_days_ago: int = 1,
+) -> int:
+    """
+    Trims per-symbol history in-place:
+      - Find earliest timestamp where HIGH is max for the symbol (peak_ts).
+      - Define cutoff = (CURRENT_DATE - reference_days_ago) - lookback_days.
+      - If peak_ts < cutoff: keep from peak_ts onward, else keep only last lookback window.
+      - Delete rows older than keep_from per symbol.
+
+    Returns number of deleted rows (best effort; may be -1 depending on driver).
+    """
+
+    # Minimal identifier validation to avoid accidental injection
+    def _is_safe_ident(x: str) -> bool:
+        return x.replace("_", "").isalnum()
+
+    for ident in (schema, table, symbol_col, ts_col, high_col):
+        if not _is_safe_ident(ident):
+            raise ValueError(f"Unsafe identifier: {ident}")
+
+    q = text(f"""
+        WITH base AS (
+            SELECT
+                "{symbol_col}" AS symbol,
+                ("{ts_col}")::timestamp AS ts,
+                "{high_col}"::double precision AS high
+            FROM {schema}.{table}
+            WHERE "{symbol_col}" IS NOT NULL
+              AND "{ts_col}" IS NOT NULL
+              AND "{high_col}" IS NOT NULL
+        ),
+        max_high AS (
+            SELECT symbol, MAX(high) AS mh
+            FROM base
+            GROUP BY symbol
+        ),
+        peak AS (
+            -- Earliest timestamp where HIGH equals the per-symbol maximum
+            SELECT b.symbol, MIN(b.ts) AS peak_ts
+            FROM base b
+            JOIN max_high m
+              ON b.symbol = m.symbol
+             AND b.high = m.mh
+            GROUP BY b.symbol
+        ),
+        cutoff AS (
+            SELECT
+                p.symbol,
+                p.peak_ts,
+                (
+                    (CURRENT_DATE - (:reference_days_ago::int) * INTERVAL '1 day')
+                    - (:lookback_days::int) * INTERVAL '1 day'
+                )::timestamp AS cutoff_ts
+            FROM peak p
+        ),
+        keep AS (
+            SELECT
+                c.symbol,
+                CASE
+                    WHEN c.peak_ts < c.cutoff_ts THEN c.peak_ts
+                    ELSE c.cutoff_ts
+                END AS keep_from
+            FROM cutoff c
+        ),
+        to_delete AS (
+            SELECT t.ctid
+            FROM {schema}.{table} t
+            JOIN keep k
+              ON t."{symbol_col}" = k.symbol
+            WHERE (t."{ts_col}")::timestamp < k.keep_from
+        )
+        DELETE FROM {schema}.{table} t
+        USING to_delete d
+        WHERE t.ctid = d.ctid;
+    """)
+
+    with self.engine.begin() as conn:
+        res = conn.execute(
+            q,
+            {"lookback_days": lookback_days, "reference_days_ago": reference_days_ago},
+        )
+
+    # res.rowcount may be -1 for some drivers; still OK
+    return res.rowcount
