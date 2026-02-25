@@ -249,5 +249,25 @@ class PostgresRepository:
         with self.engine.begin() as conn:
             conn.execute(q, {"job_name": job_name, "exchange": exchange, "symbol": symbol})
 
+    def get_active_error_symbols(
+        self,
+        schema: str,
+        table: str,
+        job_name: str,
+        exchange: str,
+    ) -> List[str]:
+        """
+        Returns symbols that still have an active ingestion error record.
+        """
+        q = text(f"""
+            SELECT symbol
+            FROM {schema}.{table}
+            WHERE job_name = :job_name
+            AND exchange = :exchange
+            ORDER BY symbol;
+        """)
 
-            
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"job_name": job_name, "exchange": exchange}).fetchall()
+
+        return [r[0] for r in rows]

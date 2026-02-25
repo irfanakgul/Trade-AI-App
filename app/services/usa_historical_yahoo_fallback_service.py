@@ -114,7 +114,7 @@ class UsaHistoricalYahooFallbackService:
                 )
 
             except Exception as e:
-                failed_out.append(symbol)
+                failed_out.append((idx,symbol))
 
                 try:
                     self.repo.upsert_ingestion_error(

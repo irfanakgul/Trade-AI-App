@@ -1,10 +1,8 @@
-# app/services/usa_historical_ingestion_service.py
-
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Dict, Any, List, Optional
 
 from app.infrastructure.database.repository import PostgresRepository
@@ -17,11 +15,11 @@ class UsaIngestionConfig:
     target_table: str = "usa_1min_high_filtered"
     last_ts_schema: str = "bronze"
     last_ts_table: str = "usa_1min_high_filtered"
-    last_ts_column: str = "TIMESTAMP"
+    last_ts_column: str = "TS"  # Use typed TS for speed and correctness
     interval_tag: str = "1min"
     source: str = "polygon"
     max_concurrent_symbols: int = 8
-    symbol_level_retries: int = 2          # number of extra rounds after the first
+    symbol_level_retries: int = 2
     retry_backoff_s: float = 3.0
     error_schema: str = "logs"
     error_table: str = "ingestion_errors"
@@ -52,14 +50,13 @@ class UsaHistoricalIngestionService:
             print("No in-scope USA symbols found.")
             return
 
-        # Reset permanently failed list on each run
         self.permanently_failed_symbols = []
 
         total = len(symbols)
         start_dt_default = datetime.strptime(start_date, "%Y-%m-%d").date()
         end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else date.today()
 
-        remaining = [(i + 1, s) for i, s in enumerate(symbols)]
+        remaining: List[tuple[int, str]] = [(i + 1, s) for i, s in enumerate(symbols)]
         round_idx = 0
 
         while True:
@@ -78,7 +75,7 @@ class UsaHistoricalIngestionService:
                         failed_out=failed,
                     )
                 )
-                for (idx, s) in remaining
+                for idx, s in remaining
             ]
             await asyncio.gather(*tasks)
 
@@ -88,20 +85,16 @@ class UsaHistoricalIngestionService:
 
             print(f"[USA] Round {round_idx} finished. failed_symbols={len(failed)}")
 
-            # Retry exhausted
             if round_idx > (1 + self.cfg.symbol_level_retries):
                 print(f"[USA] Exhausted retries. permanently_failed={len(failed)}")
-
-                # Store permanently failed symbols for fallback usage
                 self.permanently_failed_symbols = [s for (_, s) in failed]
 
-                for idx, s in failed:
+                for _, s in failed:
                     self._log_permanent_failure(
                         symbol=s,
                         error_type="SymbolRetryExhausted",
                         error_message="Symbol failed after retry rounds.",
                     )
-
                 break
 
             remaining = failed
@@ -116,10 +109,11 @@ class UsaHistoricalIngestionService:
         default_start: date,
         end_dt: date,
         failed_out: List[tuple[int, str]],
-        attempted_rows = 0,
-        inserted_rows = 0
     ) -> None:
         async with self._sem:
+            attempted_rows = 0
+            inserted_rows = 0
+
             try:
                 start_dt = default_start
                 if use_db_last_timestamp:
@@ -127,20 +121,32 @@ class UsaHistoricalIngestionService:
                         symbol=symbol,
                         schema=self.cfg.last_ts_schema,
                         table=self.cfg.last_ts_table,
-                        ts_column=self.cfg.last_ts_column,
+                        ts_column=self.cfg.last_ts_column,  # TS
                     )
                     if last_ts:
                         start_dt = last_ts.date()
 
-                total_attempted = 0
                 async for batch in self.provider.fetch_1min_aggs(symbol, start_dt, end_dt):
                     rows = self._to_rows(symbol, batch)
-                    total_attempted += self.repo.bulk_insert_on_conflict_do_nothing(
+                    attempted_rows += len(rows)
+                    inserted_rows += self.repo.bulk_insert_on_conflict_do_nothing(
                         schema=self.cfg.target_schema,
                         table=self.cfg.target_table,
                         rows=rows,
                         conflict_column="ROW_ID",
                     )
+
+                # Success => clear active error record (if any)
+                try:
+                    self.repo.clear_ingestion_error(
+                        schema=self.cfg.error_schema,
+                        table=self.cfg.error_table,
+                        job_name=self.cfg.job_name,
+                        symbol=symbol,
+                        exchange="USA",
+                    )
+                except Exception:
+                    pass
 
                 print(
                     f"[USA {idx}/{total}] {symbol}: done. "
@@ -149,11 +155,12 @@ class UsaHistoricalIngestionService:
                 )
 
             except Exception as e:
-                failed_out.append(symbol)
+                failed_out.append((idx, symbol))
                 print(f"[USA {idx}/{total}] {symbol}: failed with error: {repr(e)}")
-                # Optional: log every failure attempt (not only final)
+
+                # Record/refresh active error on every failure attempt (cleared on success later)
                 try:
-                    self.repo.log_ingestion_error(
+                    self.repo.upsert_ingestion_error(
                         schema=self.cfg.error_schema,
                         table=self.cfg.error_table,
                         job_name=self.cfg.job_name,
@@ -168,14 +175,16 @@ class UsaHistoricalIngestionService:
     def _to_rows(self, symbol: str, batch: List[AggBar]) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         for b in batch:
-            ts = datetime.utcfromtimestamp(b.ts_ms / 1000.0)
-            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
-            row_id = f"ID_{symbol}_{ts.strftime('%Y%m%d_%H%M')}_{self.cfg.interval_tag}"
+            dt_utc = datetime.fromtimestamp(b.ts_ms / 1000.0, tz=timezone.utc)
+            ts_naive = dt_utc.replace(tzinfo=None)
+            ts_str = dt_utc.strftime("%Y-%m-%d %H:%M:%S")
+            row_id = f"ID_{symbol}_{dt_utc.strftime('%Y%m%d_%H%M')}_{self.cfg.interval_tag}"
 
             rows.append(
                 {
                     "SYMBOL": symbol,
                     "TIMESTAMP": ts_str,
+                    "TS": ts_naive,
                     "OPEN": b.open,
                     "HIGH": b.high,
                     "LOW": b.low,
