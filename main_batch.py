@@ -37,54 +37,54 @@ async def main():
     # ==========================================================
     # BIST: primary (yahooquery) -> fallback (tvDatafeed) -> trim
     # ==========================================================
-    # print("\n[BIST] Historical ingestion started...\n")
+    print("\n[BIST] Historical ingestion started...\n")
 
-    # bist_primary_provider = YahooQueryBistProvider()
-    # bist_svc = BistHistoricalIngestionService(repo=repo, provider=bist_primary_provider)
+    bist_primary_provider = YahooQueryBistProvider()
+    bist_svc = BistHistoricalIngestionService(repo=repo, provider=bist_primary_provider)
 
-    # await bist_svc.run(
-    #     use_db_last_timestamp=True,
-    #     start_date="2026-01-01",
-    #     end_date=None,
-    # )
+    await bist_svc.run(
+        use_db_last_timestamp=True,
+        start_date="2026-01-01",
+        end_date=None,
+    )
 
-    # failed_bist = getattr(bist_svc, "permanently_failed_symbols", [])
-    # if failed_bist:
-    #     print(f"\n[BIST-FB] Starting tvDatafeed fallback for permanently failed symbols: {len(failed_bist)}\n")
+    failed_bist = getattr(bist_svc, "permanently_failed_symbols", [])
+    if failed_bist:
+        print(f"\n[BIST-FB] Starting tvDatafeed fallback for permanently failed symbols: {len(failed_bist)}\n")
 
-    #     tv_provider = TvDatafeedBistProvider(
-    #         TvDatafeedBistConfig(
-    #             username=os.environ["TV_USERNAME"],
-    #             password=os.environ["TV_PASSWORD"],
-    #         )
-    #     )
-    #     bist_fb_svc = BistHistoricalFallbackService(repo=repo, provider=tv_provider)
+        tv_provider = TvDatafeedBistProvider(
+            TvDatafeedBistConfig(
+                username=os.environ["TV_USERNAME"],
+                password=os.environ["TV_PASSWORD"],
+            )
+        )
+        bist_fb_svc = BistHistoricalFallbackService(repo=repo, provider=tv_provider)
 
-    #     await bist_fb_svc.run(
-    #         symbols=failed_bist,
-    #         use_db_last_timestamp=True,
-    #         start_date="2026-01-01",
-    #         end_date=None,
-    #     )
+        await bist_fb_svc.run(
+            symbols=failed_bist,
+            use_db_last_timestamp=True,
+            start_date="2026-01-01",
+            end_date=None,
+        )
 
-    #     print("\n[BIST-FB] Fallback completed.\n")
+        print("\n[BIST-FB] Fallback completed.\n")
 
-    # before_bist = repo.count_rows(schema="bronze", table="bist_1min_tv_past")
-    # print(f"[BIST] rows before trim: {before_bist}")
+    before_bist = repo.count_rows(schema="bronze", table="bist_1min_tv_past")
+    print(f"[BIST] rows before trim: {before_bist}")
 
-    # deleted_bist = repo.trim_history_by_peak_or_lookback_ts(
-    #     schema="bronze",
-    #     table="bist_1min_tv_past",
-    #     symbol_col="SYMBOL",
-    #     ts_typed_col="TS",
-    #     high_col="HIGH",
-    #     lookback_days=365,
-    #     reference_days_ago=1,
-    # )
-    # print(f"[BIST] trim completed. deleted_rows={deleted_bist}")
+    deleted_bist = repo.trim_history_by_peak_or_lookback_ts(
+        schema="bronze",
+        table="bist_1min_tv_past",
+        symbol_col="SYMBOL",
+        ts_typed_col="TS",
+        high_col="HIGH",
+        lookback_days=365,
+        reference_days_ago=1,
+    )
+    print(f"[BIST] trim completed. deleted_rows={deleted_bist}")
 
-    # after_bist = repo.count_rows(schema="bronze", table="bist_1min_tv_past")
-    # print(f"[BIST] rows after trim: {after_bist}")
+    after_bist = repo.count_rows(schema="bronze", table="bist_1min_tv_past")
+    print(f"[BIST] rows after trim: {after_bist}")
 
     # ==========================================================
     # USA: primary (Polygon) -> fallback-1 (TwelveData) -> fallback-2 (Yahoo) -> trim
