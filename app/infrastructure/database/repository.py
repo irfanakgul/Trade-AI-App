@@ -188,6 +188,66 @@ class PostgresRepository:
         with self.engine.begin() as conn:
             res = conn.execute(q, {"lookback_days": lookback_days, "reference_days_ago": reference_days_ago})
             return int(res.rowcount) if res.rowcount is not None and res.rowcount >= 0 else 0
-
-
         
+    def upsert_ingestion_error(
+        self,
+        schema: str,
+        table: str,
+        job_name: str,
+        symbol: str,
+        exchange: str,
+        error_type: str,
+        error_message: str,
+    ) -> None:
+        """
+        Upserts an active ingestion error. Requires a UNIQUE constraint on (job_name, exchange, symbol).
+        """
+        q = text(f"""
+            INSERT INTO {schema}.{table}
+                (job_name, exchange, symbol, error_type, error_message, updated_at)
+            VALUES
+                (:job_name, :exchange, :symbol, :error_type, :error_message, :updated_at)
+            ON CONFLICT (job_name, exchange, symbol)
+            DO UPDATE SET
+                error_type = EXCLUDED.error_type,
+                error_message = EXCLUDED.error_message,
+                updated_at = EXCLUDED.updated_at;
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(
+                q,
+                {
+                    "job_name": job_name,
+                    "exchange": exchange,
+                    "symbol": symbol,
+                    "error_type": error_type,
+                    "error_message": error_message,
+                    "updated_at": datetime.now(timezone.utc).replace(tzinfo=None),
+                },
+            )
+
+
+    def clear_ingestion_error(
+        self,
+        schema: str,
+        table: str,
+        job_name: str,
+        symbol: str,
+        exchange: str,
+    ) -> None:
+        """
+        Clears an active ingestion error when a symbol succeeds later.
+        """
+        q = text(f"""
+            DELETE FROM {schema}.{table}
+            WHERE job_name = :job_name
+            AND exchange = :exchange
+            AND symbol = :symbol;
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, {"job_name": job_name, "exchange": exchange, "symbol": symbol})
+
+
+            
