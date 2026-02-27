@@ -87,6 +87,26 @@ async def main():
     print(f"[BIST] rows after trim: {after_bist}")
 
     # ==========================================================
+    # BIST FRVP FOCUS TRIM NEW DATASET PREP
+    # ==========================================================
+
+    stats_bist = repo.build_frvp_focus_dataset(
+        source_schema="bronze",
+        source_table="bist_1min_tv_past",
+        target_schema="silver",
+        target_table="FRVP_BIST_FOCUS_DATASET",
+        ts_col="TS",
+        high_col="HIGH",
+        exchange="BIST",
+        min_trading_days=15,
+    )
+    print(
+        f'[BIST] Focus dataset built. '
+        f'symbols: {stats_bist["before_symbols"]} -> {stats_bist["after_symbols"]}, '
+        f'rows: {stats_bist["before_rows"]} -> {stats_bist["after_rows"]}'
+    )
+
+    # ==========================================================
     # USA: primary (Polygon) -> fallback-1 (TwelveData) -> fallback-2 (Yahoo) -> trim
     # Provider chain is driven by logs.ingestion_errors state.
     # ==========================================================
@@ -183,6 +203,28 @@ async def main():
     )
     print(f"\n[USA] Final remaining failed symbols in logs: {len(final_failed)}\n")
 
+    # ==========================================================
+    # USA FRVP FOCUS TRIM NEW DATASET PREP
+    # ==========================================================
+
+    stats_usa = repo.build_frvp_focus_dataset(
+    source_schema="bronze",
+    source_table="usa_1min_high_filtered",
+    target_schema="silver",
+    target_table="FRVP_USA_FOCUS_DATASET",
+    ts_col="TS",
+    high_col="HIGH",
+    exchange="USA",
+    min_trading_days=15,)
+
+    print(
+        f'[USA] Focus FRVP dataset built. '
+        f'symbols: {stats_usa["before_symbols"]} -> {stats_usa["after_symbols"]}, '
+        f'rows: {stats_usa["before_rows"]} -> {stats_usa["after_rows"]}'
+    )
+
+    sym_stats = repo.rebuild_frvp_focus_symbol_list()
+    print(f'[FRVP] Focus symbol list rebuilt. rows={sym_stats["rows"]}')
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple, Dict, Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
-from datetime import datetime
-
+from datetime import datetime,timezone
 
 @dataclass(frozen=True)
 class InScopeSymbol:
@@ -271,3 +270,267 @@ class PostgresRepository:
             rows = conn.execute(q, {"job_name": job_name, "exchange": exchange}).fetchall()
 
         return [r[0] for r in rows]
+    
+###############################################
+# FRVP POC CALC
+###############################################
+
+
+    def get_frvp_focus_symbols(self, exchange: str) -> List[str]:
+        q = text("""
+            SELECT "SYMBOL"
+            FROM silver."FRVP_FOCUS_SYMBOL_LIST"
+            WHERE "IN_SCOPE" = true
+              AND "EXCHANGE" = :exchange
+            ORDER BY "SYMBOL";
+        """)
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange}).fetchall()
+        return [r[0] for r in rows]
+
+    def get_symbol_max_ts(
+        self,
+        table: str,
+        symbol: str,
+        ts_col: str = "TS",
+    ) -> Optional[datetime]:
+        q = text(f"""
+            SELECT MAX("{ts_col}") AS max_ts
+            FROM silver."{table}"
+            WHERE "SYMBOL" = :symbol;
+        """)
+        with self.engine.begin() as conn:
+            row = conn.execute(q, {"symbol": symbol}).fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def fetch_symbol_ohlcv_between(
+        self,
+        table: str,
+        symbol: str,
+        start_ts: datetime,
+        end_ts: datetime,
+        ts_col: str = "TS",
+        chunk_size: int = 50000,
+    ) -> List[Dict[str, Any]]:
+        """
+        Streams rows in chunks to avoid huge memory spikes.
+        Returns list of dicts; service converts to pandas DataFrame.
+        """
+        q = text(f"""
+            SELECT
+                "SYMBOL",
+                "{ts_col}" AS "TS",
+                "OPEN",
+                "HIGH",
+                "LOW",
+                "CLOSE",
+                "VOLUME",
+                "ROW_ID"
+            FROM silver."{table}"
+            WHERE "SYMBOL" = :symbol
+              AND "{ts_col}" >= :start_ts
+              AND "{ts_col}" <= :end_ts
+            ORDER BY "{ts_col}" ASC;
+        """)
+
+        out: List[Dict[str, Any]] = []
+        with self.engine.begin() as conn:
+            # Prevent hanging forever
+            conn.execute(text("SET LOCAL statement_timeout = 300000"))
+
+            result = conn.execution_options(stream_results=True).execute(
+                q,
+                {"symbol": symbol, "start_ts": start_ts, "end_ts": end_ts},
+            ).mappings()
+
+            while True:
+                batch = result.fetchmany(chunk_size)
+                if not batch:
+                    break
+                out.extend([dict(r) for r in batch])
+
+        return out
+
+    def delete_ind_frvp_scope(
+        self,
+        exchange: str,
+        interval: str,
+        periods: List[str],
+    ) -> int:
+        q = text("""
+            DELETE FROM silver."IND_FRV_POC_PROFILE"
+            WHERE "EXCHANGE" = :exchange
+              AND "INTERVAL" = :interval
+              AND "FRVP_PERIOD_TYPE" = ANY(:periods);
+        """)
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange, "interval": interval, "periods": periods})
+            return int(res.rowcount or 0)
+
+    def insert_ind_frvp_rows(self, rows: List[Dict[str, Any]]) -> int:
+        """
+        Inserts result rows. Assumes caller cleared scope or table has a suitable unique constraint.
+        """
+        if not rows:
+            return 0
+
+        q = text("""
+            INSERT INTO silver."IND_FRV_POC_PROFILE" (
+                "EXCHANGE","SYMBOL","INTERVAL","FRVP_PERIOD_TYPE",
+                "MIN_DATE","HIGHEST_DATE","MAX_DATE",
+                "HIGHEST_ROW_ID","ROW_COUNT_AFTER_HIGHEST","DAY_COUNT_AFTER_HIGHEST",
+                "CUTT_OFF_DATE",
+                "POC","VAL","VAH",
+                "RUNTIME"
+            )
+            VALUES (
+                :EXCHANGE,:SYMBOL,:INTERVAL,:FRVP_PERIOD_TYPE,
+                :MIN_DATE,:HIGHEST_DATE,:MAX_DATE,
+                :HIGHEST_ROW_ID,:ROW_COUNT_AFTER_HIGHEST,:DAY_COUNT_AFTER_HIGHEST,
+                :CUTT_OFF_DATE,
+                :POC,:VAL,:VAH,
+                :RUNTIME
+            );
+        """)
+        with self.engine.begin() as conn:
+            conn.execute(text("SET LOCAL statement_timeout = 300000"))
+            conn.execute(q, rows)
+        return len(rows)
+
+    def log_indicator_error(
+        self,
+        job_name: str,
+        calc_group: str,
+        calc_name: str,
+        exchange: str,
+        symbol: str,
+        interval: Optional[str],
+        frvp_period_type: Optional[str],
+        error_type: str,
+        error_message: str,
+        error_stack: str,
+    ) -> None:
+        q = text("""
+            INSERT INTO logs."INDICATOR_ERRORS" (
+                "JOB_NAME","CALC_GROUP","CALC_NAME","EXCHANGE","SYMBOL",
+                "INTERVAL","FRVP_PERIOD_TYPE",
+                "ERROR_TYPE","ERROR_MESSAGE","ERROR_STACK"
+            )
+            VALUES (
+                :job_name,:calc_group,:calc_name,:exchange,:symbol,
+                :interval,:frvp_period_type,
+                :error_type,:error_message,:error_stack
+            );
+        """)
+        with self.engine.begin() as conn:
+            conn.execute(q, {
+                "job_name": job_name,
+                "calc_group": calc_group,
+                "calc_name": calc_name,
+                "exchange": exchange,
+                "symbol": symbol,
+                "interval": interval,
+                "frvp_period_type": frvp_period_type,
+                "error_type": error_type,
+                "error_message": error_message,
+                "error_stack": error_stack,
+            })
+
+    def get_symbol_max_ts(self, table: str, symbol: str, ts_col: str = "TS") -> Optional[datetime]:
+        q = text(f"""
+            SELECT MAX("{ts_col}") AS max_ts
+            FROM silver."{table}"
+            WHERE "SYMBOL" = :symbol;
+        """)
+        with self.engine.begin() as conn:
+            row = conn.execute(q, {"symbol": symbol}).fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def get_peak_ts_in_window(
+        self,
+        table: str,
+        symbol: str,
+        start_ts: datetime,
+        end_ts: datetime,
+        ts_col: str = "TS",
+        high_col: str = "HIGH",
+    ) -> Optional[datetime]:
+        """
+        Finds earliest timestamp where HIGH is maximum within [start_ts, end_ts].
+        """
+        q = text(f"""
+            WITH w AS (
+                SELECT "{ts_col}" AS ts, "{high_col}" AS high
+                FROM silver."{table}"
+                WHERE "SYMBOL" = :symbol
+                  AND "{ts_col}" >= :start_ts
+                  AND "{ts_col}" <= :end_ts
+                  AND "{high_col}" IS NOT NULL
+            ),
+            mh AS (
+                SELECT MAX(high) AS max_high FROM w
+            )
+            SELECT MIN(w.ts) AS peak_ts
+            FROM w
+            JOIN mh ON w.high = mh.max_high;
+        """)
+        with self.engine.begin() as conn:
+            row = conn.execute(q, {"symbol": symbol, "start_ts": start_ts, "end_ts": end_ts}).fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def get_row_id_at_ts(
+        self,
+        table: str,
+        symbol: str,
+        ts_value: datetime,
+        ts_col: str = "TS",
+    ) -> Optional[str]:
+        q = text(f"""
+            SELECT "ROW_ID"
+            FROM silver."{table}"
+            WHERE "SYMBOL" = :symbol
+              AND "{ts_col}" = :ts
+            ORDER BY "{ts_col}" ASC
+            LIMIT 1;
+        """)
+        with self.engine.begin() as conn:
+            row = conn.execute(q, {"symbol": symbol, "ts": ts_value}).fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def fetch_ohlcv_between_no_rowid(
+        self,
+        table: str,
+        symbol: str,
+        start_ts: datetime,
+        end_ts: datetime,
+        ts_col: str = "TS",
+        chunk_size: int = 100000,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetches OHLCV between timestamps. Does NOT select ROW_ID to reduce transfer cost.
+        """
+        q = text(f"""
+            SELECT
+                "{ts_col}" AS "TS",
+                "OPEN","HIGH","LOW","CLOSE","VOLUME"
+            FROM silver."{table}"
+            WHERE "SYMBOL" = :symbol
+              AND "{ts_col}" >= :start_ts
+              AND "{ts_col}" <= :end_ts
+            ORDER BY "{ts_col}" ASC;
+        """)
+        out: List[Dict[str, Any]] = []
+        with self.engine.begin() as conn:
+            result = conn.execution_options(stream_results=True).execute(
+                q,
+                {"symbol": symbol, "start_ts": start_ts, "end_ts": end_ts},
+            ).mappings()
+
+            while True:
+                batch = result.fetchmany(chunk_size)
+                if not batch:
+                    break
+                # This is still dict conversion, but much smaller dataset now.
+                out.extend([dict(r) for r in batch])
+
+        return out
