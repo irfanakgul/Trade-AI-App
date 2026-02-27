@@ -271,6 +271,168 @@ class PostgresRepository:
 
         return [r[0] for r in rows]
     
+    # ============================================
+    # FOCUS Dataset preperation for FRVP
+    # ============================================
+
+    def build_frvp_focus_dataset(
+        self,
+        source_schema: str,
+        source_table: str,
+        target_schema: str,
+        target_table: str,
+        ts_col: str,
+        high_col: str,
+        exchange: str,
+        min_trading_days: int = 15,
+    ) -> dict:
+        """
+        Creates a focus dataset table by:
+          - Finding per-symbol earliest timestamp where HIGH is maximal (peak_ts)
+          - Keeping rows from peak_ts onward
+          - Excluding symbols whose distinct trading days between peak_ts and max_ts <= min_trading_days
+        Table is dropped and recreated each run.
+
+        Trading days are computed as COUNT(DISTINCT TS::date) using the data itself.
+        Returns basic stats for printing.
+        """
+        src_fqn = f'{source_schema}.{source_table}'
+        tgt_fqn = f'{target_schema}."{target_table}"'  # target table uses mixed-case safe quoting
+
+        # Counts before
+        q_before = text(f'''
+            SELECT
+                COUNT(*)::bigint AS rows,
+                COUNT(DISTINCT "SYMBOL")::bigint AS symbols
+            FROM {src_fqn};
+        ''')
+
+        # Drop target and rebuild
+        q_drop = text(f'DROP TABLE IF EXISTS {tgt_fqn};')
+
+        q_create = text(f"""
+            CREATE TABLE {tgt_fqn} AS
+            WITH base AS (
+                SELECT
+                    "SYMBOL" AS symbol,
+                    "{ts_col}" AS ts,
+                    "{high_col}"::double precision AS high
+                FROM {src_fqn}
+                WHERE "SYMBOL" IS NOT NULL
+                  AND "{ts_col}" IS NOT NULL
+                  AND "{high_col}" IS NOT NULL
+            ),
+            max_high AS (
+                SELECT symbol, MAX(high) AS mh
+                FROM base
+                GROUP BY symbol
+            ),
+            peak AS (
+                -- Earliest timestamp where HIGH equals the per-symbol maximum
+                SELECT b.symbol, MIN(b.ts) AS peak_ts
+                FROM base b
+                JOIN max_high m
+                  ON b.symbol = m.symbol
+                 AND b.high = m.mh
+                GROUP BY b.symbol
+            ),
+            max_ts AS (
+                SELECT symbol, MAX(ts) AS end_ts
+                FROM base
+                GROUP BY symbol
+            ),
+            span AS (
+                SELECT p.symbol, p.peak_ts, mt.end_ts
+                FROM peak p
+                JOIN max_ts mt ON mt.symbol = p.symbol
+            ),
+            trading_days AS (
+                SELECT
+                    b.symbol,
+                    COUNT(DISTINCT (b.ts::date))::int AS td
+                FROM base b
+                JOIN span s ON s.symbol = b.symbol
+                WHERE b.ts >= s.peak_ts AND b.ts <= s.end_ts
+                GROUP BY b.symbol
+            ),
+            eligible AS (
+                SELECT s.symbol, s.peak_ts
+                FROM span s
+                JOIN trading_days d ON d.symbol = s.symbol
+                WHERE d.td > :min_trading_days
+            )
+            SELECT t.*
+            FROM {src_fqn} t
+            JOIN eligible e
+              ON t."SYMBOL" = e.symbol
+            WHERE t."{ts_col}" >= e.peak_ts;
+        """)
+
+        # Indexes for speed in downstream steps
+        q_index_1 = text(f'CREATE INDEX IF NOT EXISTS ix_{target_table.lower()}_symbol_ts ON {tgt_fqn} ("SYMBOL", "{ts_col}");')
+        q_index_2 = text(f'CREATE INDEX IF NOT EXISTS ix_{target_table.lower()}_row_id ON {tgt_fqn} ("ROW_ID");')
+
+        q_after = text(f'''
+            SELECT
+                COUNT(*)::bigint AS rows,
+                COUNT(DISTINCT "SYMBOL")::bigint AS symbols
+            FROM {tgt_fqn};
+        ''')
+
+        with self.engine.begin() as conn:
+            before = conn.execute(q_before).mappings().one()
+            conn.execute(q_drop)
+            conn.execute(q_create, {"min_trading_days": min_trading_days})
+            conn.execute(q_index_1)
+            conn.execute(q_index_2)
+            after = conn.execute(q_after).mappings().one()
+
+        return {
+            "exchange": exchange,
+            "source": f"{source_schema}.{source_table}",
+            "target": f"{target_schema}.{target_table}",
+            "before_rows": int(before["rows"]),
+            "before_symbols": int(before["symbols"]),
+            "after_rows": int(after["rows"]),
+            "after_symbols": int(after["symbols"]),
+        }
+
+    def rebuild_frvp_focus_symbol_list(self) -> dict:
+        """
+        Rebuilds silver.FRVP_FOCUS_SYMBOL_LIST from the two focus datasets.
+        Drops and recreates the table each run.
+        """
+        tgt = 'silver."FRVP_FOCUS_SYMBOL_LIST"'
+        bist = 'silver."FRVP_BIST_FOCUS_DATASET"'
+        usa = 'silver."FRVP_USA_FOCUS_DATASET"'
+
+        q_drop = text(f'DROP TABLE IF EXISTS {tgt};')
+        q_create = text(f"""
+            CREATE TABLE {tgt} AS
+            SELECT DISTINCT
+                "SYMBOL" AS "SYMBOL",
+                'BIST'::text AS "EXCHANGE",
+                TRUE AS "IN_SCOPE"
+            FROM {bist}
+            UNION
+            SELECT DISTINCT
+                "SYMBOL" AS "SYMBOL",
+                'USA'::text AS "EXCHANGE",
+                TRUE AS "IN_SCOPE"
+            FROM {usa};
+        """)
+        q_index = text(f'CREATE INDEX IF NOT EXISTS ix_frvp_focus_symbol_list ON {tgt} ("EXCHANGE", "SYMBOL");')
+        q_count = text(f'SELECT COUNT(*)::bigint AS rows FROM {tgt};')
+
+        with self.engine.begin() as conn:
+            conn.execute(q_drop)
+            conn.execute(q_create)
+            conn.execute(q_index)
+            rows = conn.execute(q_count).mappings().one()["rows"]
+
+        return {"rows": int(rows)}
+    
+    
 ###############################################
 # FRVP POC CALC
 ###############################################
@@ -534,3 +696,19 @@ class PostgresRepository:
                 out.extend([dict(r) for r in batch])
 
         return out
+    
+    def get_max_ts_for_symbol(
+        self,
+        schema: str,
+        table: str,
+        symbol: str,
+        ts_col: str = "TS",
+    ) -> Optional[datetime]:
+        q = text(f"""
+            SELECT MAX("{ts_col}") AS max_ts
+            FROM {schema}."{table}"
+            WHERE "SYMBOL" = :symbol
+        """)
+        with self.engine.begin() as conn:
+            r = conn.execute(q, {"symbol": symbol}).scalar()
+        return r
