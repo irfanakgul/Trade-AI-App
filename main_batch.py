@@ -68,6 +68,18 @@ async def main():
         )
 
         print("\n[BIST-FB] Fallback completed.\n")
+        print("\n[BIST] Sync archive -> working started...\n")
+
+    # sync from raw to bronze working dataset for latest puilled bars
+    ins_bist = repo.sync_archive_to_working(
+        archive_schema="raw",
+        archive_table="bist_1min_archive",
+        working_schema="bronze",
+        working_table="bist_1min_tv_past",
+        ts_col="TS",
+        safety_days=1)
+    
+    print(f"[BIST] Sync completed. inserted_rows={ins_bist}\n")
 
     before_bist = repo.count_rows(schema="bronze", table="bist_1min_tv_past")
     print(f"[BIST] rows before trim: {before_bist}")
@@ -173,6 +185,19 @@ async def main():
             exchange="USA",
         )
         print(f"\n[USA] After YahooQuery: still_failed={len(still_failed)}\n")
+
+        print("\n[USA] Sync archive -> working started...\n")
+    
+    # sync from raw to bronze working dataset for latest puilled bars
+    ins_usa = repo.sync_archive_to_working(
+        archive_schema="raw",
+        archive_table="usa_1min_archive",
+        working_schema="bronze",
+        working_table="usa_1min_high_filtered",
+        ts_col="TS",
+        safety_days=1,
+    )
+    print(f"[USA] Sync completed. inserted_rows={ins_usa}\n")           
 
     # ==========================================================
     # USA trim

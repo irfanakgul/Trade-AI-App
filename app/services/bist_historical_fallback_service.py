@@ -12,8 +12,8 @@ from app.infrastructure.api_clients.market_data_provider import MarketDataProvid
 @dataclass(frozen=True)
 class BistFallbackConfig:
     job_name: str = "bist_historical_ingestion"
-    target_schema: str = "bronze"
-    target_table: str = "bist_1min_tv_past"
+    target_schema: str = "raw"
+    target_table: str = "bist_1min_archive"
     last_ts_schema: str = "bronze"
     last_ts_table: str = "bist_1min_tv_past"
     last_ts_column: str = "TS"

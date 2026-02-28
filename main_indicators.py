@@ -19,8 +19,8 @@ def main():
 
     svc = IndFrvPocProfileService(repo=repo)
 
-    # print("\n[IND] FRVP POC/VAL/VAH started (BIST)...\n")
-    # svc.run(exchange="BIST", periods=periods, cutt_off_date=cutt_off_date, is_truncate_scope=True)
+    print("\n[IND] FRVP POC/VAL/VAH started (BIST)...\n")
+    svc.run(exchange="BIST", periods=periods, cutt_off_date=cutt_off_date, is_truncate_scope=True)
 
     print("\n[IND] FRVP POC/VAL/VAH started (USA)...\n")
     svc.run(exchange="USA", periods=periods, cutt_off_date=cutt_off_date, is_truncate_scope=True)

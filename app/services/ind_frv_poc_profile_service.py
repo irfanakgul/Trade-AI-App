@@ -3,7 +3,7 @@ from __future__ import annotations
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -20,7 +20,7 @@ class FrvpServiceConfig:
     job_name: str = "ind_frv_poc_profile"
     calc_group: str = "FRVP"
     calc_name: str = "POC_VAL_VAH"
-    max_concurrent_symbols: int = 1  # IMPORTANT: keep low; CPU-heavy math
+    max_concurrent_symbols: int = 1  # CPU-heavy math; keep low
 
 
 class IndFrvPocProfileService:
@@ -42,17 +42,21 @@ class IndFrvPocProfileService:
             print(f"[FRVP] No symbols found for exchange={exchange}")
             return
 
-        # Normalize + sort periods (shortest -> longest)
         periods_sorted = self._sort_periods_short_to_long(periods)
+        if not periods_sorted:
+            print(f"[FRVP] No valid periods provided. exchange={exchange}")
+            return
 
-        # Clean output for the requested scope (exchange + interval + periods)
         if is_truncate_scope:
             deleted = self.repo.delete_ind_frvp_scope(
                 exchange=exchange,
                 interval=self.cfg.interval,
                 periods=periods_sorted,
             )
-            print(f"[FRVP] Scope cleaned: exchange={exchange} interval={self.cfg.interval} deleted_rows={deleted}")
+            print(
+                f"[FRVP] Scope cleaned: exchange={exchange} interval={self.cfg.interval} "
+                f"deleted_rows={deleted}"
+            )
 
         source_table = "FRVP_USA_FOCUS_DATASET" if exchange == "USA" else "FRVP_BIST_FOCUS_DATASET"
 
@@ -77,6 +81,15 @@ class IndFrvPocProfileService:
                     e=e,
                 )
 
+        total_sym, true_sym = self.repo.update_in_scope_for_ema_rsi(
+            exchange=exchange,
+            interval=self.cfg.interval,
+        )
+        print(
+            f"[FRVP {exchange}] IN_SCOPE_FOR_EMA_RSI computed. "
+            f"unique_symbols={total_sym} true_symbols={true_sym}"
+        )
+        
     def _process_symbol(
         self,
         idx: int,
@@ -99,10 +112,14 @@ class IndFrvPocProfileService:
         else:
             end_ts = max_ts
 
-        # If no periods, nothing to do
-        if not periods_sorted:
-            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: no periods")
-            return
+        # Latest close once per symbol (same for all periods)
+        latest_close = self.repo.get_latest_close_value(
+            schema="silver",
+            table=source_table,
+            symbol=symbol,
+            ts_col="TS",
+            close_col="CLOSE",
+        )
 
         # ---- Optimization: find global peak in the LONGEST window once ----
         longest_p = periods_sorted[-1]
@@ -118,15 +135,15 @@ class IndFrvPocProfileService:
             high_col="HIGH",
         )
         if global_peak_ts is None:
-            # No data in longest window -> nothing to compute
             print(f"[FRVP {exchange} {idx}/{total}] {symbol}: no peak in longest window")
             return
 
         global_peak_dt = pd.to_datetime(global_peak_ts).to_pydatetime()
 
-        # Determine BASE_PERIOD: the first period window that contains the global peak
+        # Determine BASE_PERIOD: the first (shortest) period window that contains the global peak
         base_period = longest_p
         base_index = len(periods_sorted) - 1
+
         for i, p in enumerate(periods_sorted):
             d = self._period_to_delta(p)
             w_start = (pd.Timestamp(end_ts) - d).to_pydatetime()
@@ -135,9 +152,9 @@ class IndFrvPocProfileService:
                 base_index = i
                 break
 
-        # ---- 1) Compute SHORT periods normally (they may have different peaks) ----
         out_rows: List[Dict[str, Any]] = []
 
+        # ---- 1) SHORT periods (strictly shorter than base) computed normally ----
         short_periods = periods_sorted[:base_index]
         for p in short_periods:
             try:
@@ -148,9 +165,9 @@ class IndFrvPocProfileService:
                     period=p,
                     end_ts=end_ts,
                     cutt_off_date=cutt_off_date,
-                    # peak determined per period window
-                    forced_peak_ts=None,
-                    based_period=p,
+                    forced_peak_ts=None,              # compute peak per-window
+                    based_period=p,                   # computed from itself
+                    latest_close=latest_close,
                 )
                 if row:
                     out_rows.append(row)
@@ -163,7 +180,7 @@ class IndFrvPocProfileService:
                     e=e,
                 )
 
-        # ---- 2) Compute BASE period once using global peak (no SQL peak query needed) ----
+        # ---- 2) BASE period computed once using global peak ----
         base_row: Optional[Dict[str, Any]] = None
         try:
             base_row = self._compute_period_row(
@@ -173,10 +190,13 @@ class IndFrvPocProfileService:
                 period=base_period,
                 end_ts=end_ts,
                 cutt_off_date=cutt_off_date,
-                forced_peak_ts=global_peak_dt,  # IMPORTANT: use global peak
-                based_period=base_period,
+                forced_peak_ts=global_peak_dt,       # IMPORTANT: global peak
+                based_period=base_period,            # computed from base_period
+                latest_close=latest_close,
             )
             if base_row:
+                # Ensure not blank (hard safety)
+                base_row["BASED_PERIOD"] = base_row.get("BASED_PERIOD") or base_period
                 out_rows.append(base_row)
         except Exception as e:
             self._log_error(
@@ -187,19 +207,24 @@ class IndFrvPocProfileService:
                 e=e,
             )
 
-        # ---- 3) Copy BASE result for LONGER periods (no math) ----
+        # ---- 3) LONGER periods copied from BASE (no math) ----
+        copied_cnt = 0
         if base_row:
             longer_periods = periods_sorted[base_index + 1 :]
             for p in longer_periods:
                 copied = dict(base_row)
                 copied["FRVP_PERIOD_TYPE"] = p
-                copied["BASED_PERIOD"] = base_period
+                copied["BASED_PERIOD"] = base_period  # GUARANTEE
+                # If you want unique runtime per copied row, uncomment:
+                # copied["RUNTIME"] = datetime.now().strftime("%d-%m-%Y %H:%M")
                 out_rows.append(copied)
+                copied_cnt += 1
 
         inserted = self.repo.insert_ind_frvp_rows(out_rows)
+
         print(
             f"[FRVP {exchange} {idx}/{total}] {symbol}: inserted_rows={inserted} "
-            f"base_period={base_period} short={len(short_periods)} copied={max(0, len(periods_sorted) - base_index - 1)}"
+            f"base_period={base_period} short={len(short_periods)} copied={copied_cnt}"
         )
 
     def _compute_period_row(
@@ -211,7 +236,8 @@ class IndFrvPocProfileService:
         end_ts: datetime,
         cutt_off_date: Optional[str],
         forced_peak_ts: Optional[datetime],
-        based_period: str,
+        based_period: Optional[str],
+        latest_close: Optional[float],
     ) -> Optional[Dict[str, Any]]:
         """
         Computes one FRVP row for a single period.
@@ -219,9 +245,10 @@ class IndFrvPocProfileService:
 
         forced_peak_ts:
           - None => compute peak_ts via SQL in that period window
-          - datetime => use given peak_ts directly (used for BASE_PERIOD optimization)
+          - datetime => use given peak_ts directly (BASE optimization)
         """
         period = period.strip()
+        based_period = (based_period or period).strip()  # GUARANTEE not blank
 
         if forced_peak_ts is None:
             delta = self._period_to_delta(period)
@@ -241,7 +268,7 @@ class IndFrvPocProfileService:
         else:
             peak_dt = forced_peak_ts
 
-        # Fetch only peak_dt -> end_ts OHLCV (smaller)
+        # Fetch only peak_dt -> end_ts OHLCV
         rows = self.repo.fetch_ohlcv_between_no_rowid(
             table=source_table,
             symbol=symbol,
@@ -263,7 +290,7 @@ class IndFrvPocProfileService:
         row_count = int(len(df_final))
         day_count = int(df_final["TS"].dt.date.nunique())
 
-        # Fetch ROW_ID only for the peak point (tiny query)
+        # Fetch ROW_ID only for the peak point
         highest_row_id = self.repo.get_row_id_at_ts(
             table=source_table,
             symbol=symbol,
@@ -301,6 +328,7 @@ class IndFrvPocProfileService:
             "VAL": float(result["VAL"]),
             "VAH": float(result["VAH"]),
             "RUNTIME": runtime_str,
+            "LATEST_CLOSE_VALUE": float(latest_close) if latest_close is not None else None,
         }
 
     def _log_error(
@@ -325,25 +353,14 @@ class IndFrvPocProfileService:
         )
 
     def _period_to_delta(self, period: str) -> relativedelta:
-        p = period.strip().lower()
-
-        # Normalize plural/singular
-        p = p.replace(" ", "")
-        if p.endswith("year"):
-            p = p + "s"
-        if p.endswith("month"):
-            p = p + "s"
-        if p.endswith("week"):
-            p = p + "s"
-        if p.endswith("day"):
-            p = p + "s"
+        p = period.strip().lower().replace(" ", "")
 
         if "year" in p:
             n = int("".join([c for c in p if c.isdigit()]) or "1")
-            return relativedelta(years=n)  # calendar years
+            return relativedelta(years=n)
         if "month" in p:
             n = int("".join([c for c in p if c.isdigit()]) or "1")
-            return relativedelta(months=n)  # calendar months
+            return relativedelta(months=n)
         if "week" in p:
             n = int("".join([c for c in p if c.isdigit()]) or "1")
             return relativedelta(weeks=n)
@@ -362,14 +379,15 @@ class IndFrvPocProfileService:
         years = d.years or 0
         months = d.months or 0
         days = d.days or 0
-        weeks = getattr(d, "weeks", 0) or 0  # safe
-        return years * 100000 + months * 1000 + weeks * 100 + days
+        # relativedelta has no .weeks reliably; weeks become days in most cases
+        return years * 100000 + months * 1000 + days
 
     def _sort_periods_short_to_long(self, periods: List[str]) -> List[str]:
-        cleaned = []
+        cleaned: List[str] = []
         for p in periods:
             if p and str(p).strip():
                 cleaned.append(str(p).strip())
-        # Deduplicate while preserving best behavior
+
+        # Deduplicate while preserving "first seen"
         cleaned = list(dict.fromkeys(cleaned))
         return sorted(cleaned, key=self._period_sort_score)

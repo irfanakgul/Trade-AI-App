@@ -11,8 +11,8 @@ from app.infrastructure.api_clients.market_data_provider import MarketDataProvid
 
 @dataclass(frozen=True)
 class UsaIngestionConfig:
-    target_schema: str = "bronze"
-    target_table: str = "usa_1min_high_filtered"
+    target_schema: str = "raw"
+    target_table: str = "usa_1min_archive"
     last_ts_schema: str = "bronze"
     last_ts_table: str = "usa_1min_high_filtered"
     last_ts_column: str = "TS"  # Use typed TS for speed and correctness

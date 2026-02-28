@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple, Dict, Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
-from datetime import datetime,timezone
+from datetime import datetime,timezone,timedelta
 
 @dataclass(frozen=True)
 class InScopeSymbol:
@@ -539,25 +539,40 @@ class PostgresRepository:
         q = text("""
             INSERT INTO silver."IND_FRV_POC_PROFILE" (
                 "EXCHANGE","SYMBOL","INTERVAL","FRVP_PERIOD_TYPE",
+                "BASED_PERIOD",
                 "MIN_DATE","HIGHEST_DATE","MAX_DATE",
                 "HIGHEST_ROW_ID","ROW_COUNT_AFTER_HIGHEST","DAY_COUNT_AFTER_HIGHEST",
                 "CUTT_OFF_DATE",
                 "POC","VAL","VAH",
-                "RUNTIME"
+                "RUNTIME",
+                "LATEST_CLOSE_VALUE"
             )
             VALUES (
                 :EXCHANGE,:SYMBOL,:INTERVAL,:FRVP_PERIOD_TYPE,
+                :BASED_PERIOD,
                 :MIN_DATE,:HIGHEST_DATE,:MAX_DATE,
                 :HIGHEST_ROW_ID,:ROW_COUNT_AFTER_HIGHEST,:DAY_COUNT_AFTER_HIGHEST,
                 :CUTT_OFF_DATE,
                 :POC,:VAL,:VAH,
-                :RUNTIME
+                :RUNTIME,
+                :LATEST_CLOSE_VALUE
             );
         """)
+
+        # Ensure missing keys don't crash executemany and don't become "unbound"
+        normalized_rows: List[Dict[str, Any]] = []
+        for r in rows:
+            rr = dict(r)
+            rr.setdefault("BASED_PERIOD", None)
+            rr.setdefault("LATEST_CLOSE_VALUE", None)
+            normalized_rows.append(rr)
+
         with self.engine.begin() as conn:
+            # NOTE: Use a literal integer, don't bind params here.
             conn.execute(text("SET LOCAL statement_timeout = 300000"))
-            conn.execute(q, rows)
-        return len(rows)
+            conn.execute(q, normalized_rows)
+
+        return len(normalized_rows)
 
     def log_indicator_error(
         self,
@@ -712,3 +727,134 @@ class PostgresRepository:
         with self.engine.begin() as conn:
             r = conn.execute(q, {"symbol": symbol}).scalar()
         return r
+    
+    # raw data handling
+    def sync_archive_to_working(
+        self,
+        archive_schema: str,
+        archive_table: str,
+        working_schema: str,
+        working_table: str,
+        ts_col: str = "TS",
+        safety_days: int = 1,
+    ) -> int:
+        """
+        Append-only sync: moves only recent/new rows from archive into working using ON CONFLICT DO NOTHING.
+        Uses working MAX(TS) as watermark and subtracts safety_days to avoid missing edge minutes.
+        """
+        cols = '"SYMBOL","TIMESTAMP","TS","OPEN","HIGH","LOW","CLOSE","VOLUME","SOURCE","ROW_ID"'
+
+        get_max = text(f"""
+            SELECT MAX("{ts_col}") AS max_ts
+            FROM {working_schema}.{working_table};
+        """)
+
+        insert_q = text(f"""
+            INSERT INTO {working_schema}.{working_table} ({cols})
+            SELECT {cols}
+            FROM {archive_schema}.{archive_table} a
+            WHERE a."{ts_col}" >= :from_ts
+            ON CONFLICT ("ROW_ID") DO NOTHING;
+        """)
+
+        with self.engine.begin() as conn:
+            max_ts = conn.execute(get_max).scalar()
+
+            if max_ts is None:
+                from_ts = datetime(1900, 1, 1)
+            else:
+                from_ts = (max_ts - timedelta(days=safety_days))
+
+            res = conn.execute(insert_q, {"from_ts": from_ts})
+            return int(res.rowcount or 0)
+        
+    def get_latest_close_value(
+        self,
+        table: str,
+        symbol: str,
+        ts_col: str = "TS",
+        close_col: str = "CLOSE",
+        schema: str = "silver",
+    ) -> Optional[float]:
+        """
+        Returns CLOSE value at the maximum timestamp for the given symbol.
+        Uses a single indexed query.
+        """
+        q = text(f"""
+            SELECT t."{close_col}"::double precision AS close
+            FROM {schema}."{table}" t
+            WHERE t."SYMBOL" = :symbol
+            ORDER BY t."{ts_col}" DESC
+            LIMIT 1;
+        """)
+        with self.engine.connect() as conn:
+            row = conn.execute(q, {"symbol": symbol}).fetchone()
+            return float(row[0]) if row and row[0] is not None else None
+        
+    # find min poc and calc if higher than close value
+    def update_in_scope_for_ema_rsi(
+        self,
+        exchange: str,
+        interval: str,
+    ) -> Tuple[int, int]:
+        """
+        Sets IN_SCOPE_FOR_EMA_RSI per (EXCHANGE, SYMBOL) based on:
+        latest_close_value > MIN(POC) over all periods.
+        Updates all period rows for that symbol.
+
+        Returns:
+        (unique_symbol_count, unique_true_symbol_count)
+        """
+        exchange = exchange.upper().strip()
+
+        # 1) Update flag for all rows in-scope
+        q_update = text("""
+            WITH agg AS (
+                SELECT
+                    "EXCHANGE",
+                    "SYMBOL",
+                    MIN("POC") AS min_poc,
+                    MAX("LATEST_CLOSE_VALUE") AS latest_close
+                FROM silver."IND_FRV_POC_PROFILE"
+                WHERE "EXCHANGE" = :exchange
+                AND "INTERVAL" = :interval
+                AND "POC" IS NOT NULL
+                AND "LATEST_CLOSE_VALUE" IS NOT NULL
+                GROUP BY "EXCHANGE", "SYMBOL"
+            )
+            UPDATE silver."IND_FRV_POC_PROFILE" t
+            SET "IN_SCOPE_FOR_EMA_RSI" = (a.latest_close > a.min_poc)
+            FROM agg a
+            WHERE t."EXCHANGE" = a."EXCHANGE"
+            AND t."SYMBOL" = a."SYMBOL"
+            AND t."INTERVAL" = :interval;
+        """)
+
+        # 2) Counts (unique symbols + unique true symbols)
+        q_counts = text("""
+            WITH agg AS (
+                SELECT
+                    "EXCHANGE",
+                    "SYMBOL",
+                    MIN("POC") AS min_poc,
+                    MAX("LATEST_CLOSE_VALUE") AS latest_close
+                FROM silver."IND_FRV_POC_PROFILE"
+                WHERE "EXCHANGE" = :exchange
+                AND "INTERVAL" = :interval
+                AND "POC" IS NOT NULL
+                AND "LATEST_CLOSE_VALUE" IS NOT NULL
+                GROUP BY "EXCHANGE", "SYMBOL"
+            )
+            SELECT
+                COUNT(*) AS total_symbols,
+                SUM(CASE WHEN (latest_close > min_poc) THEN 1 ELSE 0 END) AS true_symbols
+            FROM agg;
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q_update, {"exchange": exchange, "interval": interval})
+            row = conn.execute(q_counts, {"exchange": exchange, "interval": interval}).one()
+            total_symbols = int(row[0] or 0)
+            true_symbols = int(row[1] or 0)
+
+        return total_symbols, true_symbols
