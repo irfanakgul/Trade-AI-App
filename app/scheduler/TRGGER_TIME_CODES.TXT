@@ -1,0 +1,13 @@
+## sifirlamak icin>
+rm -f var/scheduler_state.json
+
+## yeniden schedule modunu aktif etmek icin
+pkill -f "app.scheduler.daemon" || true
+/Users/yasinyilmaz/Desktop/Trade-AI-App/.venv/bin/python -u -m app.scheduler.daemon --config app/scheduler/schedule.yaml
+
+## Printleri takip etmek icin.
+tail -f logs/bist_batch.out.log
+
+
+## calisan durdurmak icin> 
+python -u -m app.scheduler.daemon ...

@@ -1,0 +1,24 @@
+timezone: Europe/Amsterdam
+run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
+poll_interval_seconds: 20
+
+jobs:
+  - name: bist_batch
+    at: "23:20"
+    cmd: ".venv/bin/python -u main_bist_data.py"
+    lock: "bist_batch"
+
+  - name: bist_indicators
+    depends_on: "bist_batch"
+    cmd: ".venv/bin/python -u main_bist_indicators.py"
+    lock: "bist_indicators"
+
+  - name: usa_batch
+    at: "23:22"
+    cmd: ".venv/bin/python -u main_usa_data.py"
+    lock: "usa_batch"
+
+  - name: usa_indicators
+    depends_on: "usa_batch"
+    cmd: ".venv/bin/python -u main_usa_indicators.py"
+    lock: "usa_indicators"
