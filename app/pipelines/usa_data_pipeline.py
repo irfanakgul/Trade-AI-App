@@ -158,7 +158,7 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
     else:
         print("[USA] trim skipped")
 
-    # 6) Focus dataset + focus symbol list rebuild
+    # 6) Focus dataset + focus symbol list rebuild for indicators
     if flags.build_focus_dataset:
         stats_usa = repo.build_frvp_focus_dataset(
             source_schema="bronze",

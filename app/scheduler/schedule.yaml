@@ -10,9 +10,9 @@ jobs:
     lock: "bist_batch"
 
   - name: bist_indicators
-    run_days: [SUN]
-    at: "23:27"
-    # depends_on: "bist_batch"
+    run_days: [SUN] #remove if u will use depends on
+    at: "23:27" #remove if u will use depends on
+    # depends_on: "bist_batch" #open for depends usage
     cmd: ".venv/bin/python -u main_bist_indicators.py"
     lock: "bist_indicators"
 
@@ -23,8 +23,8 @@ jobs:
     lock: "usa_batch"
 
   - name: usa_indicators
-    # depends_on: "usa_batch"
-    run_days: [SUN]
-    at: "23:32"
+    # depends_on: "usa_batch"  #"bist_batch" #open for depends usage
+    run_days: [SUN] #remove if u will use depends on
+    at: "23:32" #remove if u will use depends on
     cmd: ".venv/bin/python -u main_usa_indicators.py"
     lock: "usa_indicators"
