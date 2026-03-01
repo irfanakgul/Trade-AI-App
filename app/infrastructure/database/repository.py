@@ -540,7 +540,7 @@ class PostgresRepository:
             INSERT INTO silver."IND_FRV_POC_PROFILE" (
                 "EXCHANGE","SYMBOL","INTERVAL","FRVP_PERIOD_TYPE",
                 "BASED_PERIOD",
-                "MIN_DATE","HIGHEST_DATE","MAX_DATE",
+                "MIN_DATE","HIGHEST_DATE","HIGHEST_VALUE","MAX_DATE",
                 "HIGHEST_ROW_ID","ROW_COUNT_AFTER_HIGHEST","DAY_COUNT_AFTER_HIGHEST",
                 "CUTT_OFF_DATE",
                 "POC","VAL","VAH",
@@ -550,7 +550,7 @@ class PostgresRepository:
             VALUES (
                 :EXCHANGE,:SYMBOL,:INTERVAL,:FRVP_PERIOD_TYPE,
                 :BASED_PERIOD,
-                :MIN_DATE,:HIGHEST_DATE,:MAX_DATE,
+                :MIN_DATE,:HIGHEST_DATE,:HIGHEST_VALUE,:MAX_DATE,
                 :HIGHEST_ROW_ID,:ROW_COUNT_AFTER_HIGHEST,:DAY_COUNT_AFTER_HIGHEST,
                 :CUTT_OFF_DATE,
                 :POC,:VAL,:VAH,
@@ -767,6 +767,29 @@ class PostgresRepository:
 
             res = conn.execute(insert_q, {"from_ts": from_ts})
             return int(res.rowcount or 0)
+    
+    def get_high_at_ts(
+        self,
+        table: str,
+        symbol: str,
+        ts_value: datetime,
+        ts_col: str = "TS",
+        high_col: str = "HIGH",
+        schema: str = "silver",
+    ) -> Optional[float]:
+        q = text(f"""
+            SELECT "{high_col}"::double precision AS high
+            FROM {schema}."{table}"
+            WHERE "SYMBOL" = :symbol
+            AND "{ts_col}" = :ts
+            ORDER BY "{ts_col}" ASC
+            LIMIT 1
+        """)
+
+        with self.engine.connect() as conn:
+            row = conn.execute(q, {"symbol": symbol, "ts": ts_value}).fetchone()
+
+        return float(row[0]) if row and row[0] is not None else None
         
     def get_latest_close_value(
         self,

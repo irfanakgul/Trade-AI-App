@@ -1,6 +1,8 @@
 import os
 from dataclasses import dataclass
 from typing import Optional
+from datetime import datetime
+
 
 from app.infrastructure.api_clients.yahooquery_bist_provider import YahooQueryBistProvider
 from app.infrastructure.api_clients.tvdatafeed_bist_provider import TvDatafeedBistProvider, TvDatafeedBistConfig
@@ -28,7 +30,12 @@ class BistDataPipelineFlags:
 
 
 async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipelineFlags) -> None:
-    print("\n[BIST] Data pipeline started...\n")
+
+    print(
+        "\n[BIST] Data pipeline started... "
+        + datetime.now().strftime("%d-%m-%Y %H:%M")
+        + "\n"
+    )
 
     failed_bist: list[str] = []
 
@@ -72,6 +79,12 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
     else:
         print("[BIST-FB] fallback disabled")
 
+    print(
+    "\n[BIST] Data update completed.. "
+    + datetime.now().strftime("%d-%m-%Y %H:%M")
+    + "\n"
+    )
+
     # 3) Sync raw -> bronze working
     if flags.sync_archive_to_working:
         print("\n[BIST] Sync archive -> working started...\n")
@@ -83,7 +96,10 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
             ts_col="TS",
             safety_days=flags.safety_days,
         )
-        print(f"[BIST] Sync completed. inserted_rows={ins_bist}\n")
+        print(
+            f"[BIST] Sync completed. inserted_rows={ins_bist} "
+            f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
+        )
     else:
         print("[BIST] sync skipped")
 
@@ -101,12 +117,16 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
             lookback_days=flags.lookback_days,
             reference_days_ago=flags.reference_days_ago,
         )
-        print(f"[BIST] trim completed. deleted_rows={deleted_bist}")
+        print(
+            f"[BIST] trim365 completed. deleted_rows={deleted_bist} "
+            f"{datetime.now().strftime('%d-%m-%Y %H:%M')}"
+        )
 
         after_bist = repo.count_rows(schema="bronze", table="bist_1min_tv_past")
         print(f"[BIST] rows after trim: {after_bist}")
     else:
         print("[BIST] trim skipped")
+
 
     # 5) Focus dataset
     if flags.build_focus_dataset:
@@ -123,9 +143,13 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
         print(
             f'[BIST] Focus dataset built. '
             f'symbols: {stats_bist["before_symbols"]} -> {stats_bist["after_symbols"]}, '
-            f'rows: {stats_bist["before_rows"]} -> {stats_bist["after_rows"]}'
+            f'rows: {stats_bist["before_rows"]} -> {stats_bist["after_rows"]} '
+            f'{datetime.now().strftime("%d-%m-%Y %H:%M")}'
         )
     else:
         print("[BIST] focus dataset build skipped")
 
-    print("\n[BIST] Data pipeline finished.\n")
+    print(
+        f"\n[BIST] Data pipeline finished. "
+        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
+    )

@@ -5,7 +5,6 @@ import json
 import os
 import shlex
 import subprocess
-import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, date
@@ -27,6 +26,21 @@ WEEKDAY_MAP = {
 }
 
 
+def _parse_run_days(raw_days: Optional[List[str]], *, default_days: Set[int]) -> Set[int]:
+    """
+    Parse run_days like ["MON","TUE"] into {0,1}. If raw_days is None/empty, return default_days.
+    """
+    if not raw_days:
+        return set(default_days)
+    out: Set[int] = set()
+    for x in raw_days:
+        k = str(x).upper().strip()
+        if k not in WEEKDAY_MAP:
+            raise ValueError(f"Invalid run_days entry: {x}")
+        out.add(WEEKDAY_MAP[k])
+    return out
+
+
 @dataclass(frozen=True)
 class Job:
     name: str
@@ -34,6 +48,7 @@ class Job:
     at: Optional[str] = None          # "HH:MM"
     depends_on: Optional[str] = None  # parent job name
     lock: Optional[str] = None        # lock key
+    run_days: Optional[Set[int]] = None  # per-job run days override (weekday ints)
 
 
 @dataclass(frozen=True)
@@ -109,7 +124,7 @@ class FileLock:
         finally:
             self.fd = None
             try:
-                self.path.unlink(missing_ok=True)  # py3.8+: ok. py3.11: ok.
+                self.path.unlink(missing_ok=True)
             except Exception:
                 pass
 
@@ -121,19 +136,26 @@ def load_schedule(path: Path) -> ScheduleConfig:
     poll = int(raw.get("poll_interval_seconds", 20))
 
     rd = raw.get("run_days", ["MON", "TUE", "WED", "THU", "FRI"])
-    run_days = {WEEKDAY_MAP[x.upper().strip()] for x in rd}
+    run_days = _parse_run_days(rd, default_days=set(WEEKDAY_MAP.values()))
 
     jobs_raw = raw.get("jobs", [])
     jobs: List[Job] = []
     names: Set[str] = set()
 
     for j in jobs_raw:
+        # Per-job run_days override (optional)
+        job_run_days_raw = j.get("run_days", None)
+        job_run_days = None
+        if job_run_days_raw is not None:
+            job_run_days = _parse_run_days(job_run_days_raw, default_days=run_days)
+
         job = Job(
             name=str(j["name"]).strip(),
             cmd=str(j["cmd"]).strip(),
             at=str(j["at"]).strip() if "at" in j else None,
             depends_on=str(j["depends_on"]).strip() if "depends_on" in j else None,
             lock=str(j["lock"]).strip() if "lock" in j else None,
+            run_days=job_run_days,
         )
         if job.name in names:
             raise ValueError(f"Duplicate job name: {job.name}")
@@ -153,8 +175,21 @@ def now_in_tz(tz: str) -> datetime:
     return datetime.now(ZoneInfo(tz))
 
 
-def is_run_day(cfg: ScheduleConfig, dt: datetime) -> bool:
-    return dt.weekday() in cfg.run_days
+def effective_run_days(cfg: ScheduleConfig, job: Optional[Job]) -> Set[int]:
+    """
+    Global run_days are defaults. Jobs can override via job.run_days.
+    """
+    if job and job.run_days is not None:
+        return job.run_days
+    return cfg.run_days
+
+
+def any_jobs_runnable_today(cfg: ScheduleConfig, dt: datetime) -> bool:
+    wd = dt.weekday()
+    for j in cfg.jobs:
+        if wd in effective_run_days(cfg, j):
+            return True
+    return False
 
 
 def parse_hhmm(hhmm: str) -> tuple[int, int]:
@@ -169,12 +204,20 @@ def due_root_jobs(cfg: ScheduleConfig, dt: datetime, state: SchedulerState) -> L
     Root jobs are jobs with an 'at' schedule.
     We consider a job due when current local time matches HH:MM exactly.
     State ensures it runs only once per day.
+    Job-level run_days is supported; if missing, global run_days apply.
     """
     today = dt.date()
+    wd = dt.weekday()
+
     out: List[Job] = []
     for j in cfg.jobs:
         if not j.at:
             continue
+
+        # Job-level run day filtering
+        if wd not in effective_run_days(cfg, j):
+            continue
+
         if state.get_status(today, j.name) in ("done", "failed"):
             continue
 
@@ -233,14 +276,19 @@ def main() -> int:
     logs_dir = Path(args.logs)
     workdir = Path(args.workdir).resolve()
 
-    print(f"[SCHED] loaded jobs={len(cfg.jobs)} tz={cfg.timezone} poll={cfg.poll_interval_seconds}s workdir={workdir}", flush=True)
+    print(
+        f"[SCHED] loaded jobs={len(cfg.jobs)} tz={cfg.timezone} poll={cfg.poll_interval_seconds}s workdir={workdir}",
+        flush=True,
+    )
 
     while True:
         dt = now_in_tz(cfg.timezone)
+        print(f"[SCHED] now={dt.strftime('%Y-%m-%d %H:%M:%S')} weekday={dt.weekday()}", flush=True)
 
-        if not is_run_day(cfg, dt):
+        # If no jobs are runnable today (considering per-job run_days overrides), skip.
+        if not any_jobs_runnable_today(cfg, dt):
             if args.once:
-                print("[SCHED] not a run day; exiting (once).", flush=True)
+                print("[SCHED] not a runnable day for any job; exiting (once).", flush=True)
                 return 0
             time.sleep(cfg.poll_interval_seconds)
             continue
@@ -252,6 +300,11 @@ def main() -> int:
         while queue:
             job = queue.pop(0)
             today = dt.date()
+            wd = dt.weekday()
+
+            # Job-level run day filtering (again, for safety)
+            if wd not in effective_run_days(cfg, job):
+                continue
 
             # State check again (in case it was completed earlier in same tick)
             if state.get_status(today, job.name) in ("done", "failed"):
@@ -267,11 +320,19 @@ def main() -> int:
                 rc = run_job(cfg, job, workdir=workdir, logs_dir=logs_dir)
                 if rc == 0:
                     state.mark(today, job.name, "done")
+
                     # Enqueue dependents immediately (dependency chain)
                     for child in dependents_of(cfg, job.name):
                         # Only run child if it hasn't run today
-                        if state.get_status(today, child.name) is None:
-                            queue.append(child)
+                        if state.get_status(today, child.name) is not None:
+                            continue
+
+                        # If child has run_days override, apply it as an additional constraint.
+                        # If it doesn't, it inherits global (already handled by effective_run_days).
+                        if wd not in effective_run_days(cfg, child):
+                            continue
+
+                        queue.append(child)
                 else:
                     state.mark(today, job.name, "failed")
                     # Do not run dependents if parent failed

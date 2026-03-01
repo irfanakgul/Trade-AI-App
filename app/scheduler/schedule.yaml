@@ -4,21 +4,27 @@ poll_interval_seconds: 20
 
 jobs:
   - name: bist_batch
-    at: "23:20"
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
+    at: "09:00"
     cmd: ".venv/bin/python -u main_bist_data.py"
     lock: "bist_batch"
 
   - name: bist_indicators
-    depends_on: "bist_batch"
+    run_days: [SUN]
+    at: "23:27"
+    # depends_on: "bist_batch"
     cmd: ".venv/bin/python -u main_bist_indicators.py"
     lock: "bist_indicators"
 
   - name: usa_batch
-    at: "23:22"
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
+    at: "00:40"
     cmd: ".venv/bin/python -u main_usa_data.py"
     lock: "usa_batch"
 
   - name: usa_indicators
-    depends_on: "usa_batch"
+    # depends_on: "usa_batch"
+    run_days: [SUN]
+    at: "23:32"
     cmd: ".venv/bin/python -u main_usa_indicators.py"
     lock: "usa_indicators"

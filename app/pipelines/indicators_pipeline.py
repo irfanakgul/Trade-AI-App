@@ -3,6 +3,7 @@ from typing import Optional, List
 
 from app.infrastructure.database.repository import PostgresRepository
 from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
+from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -25,10 +26,18 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
 
     svc = IndFrvPocProfileService(repo=repo)
 
-    print(f"\n[IND] FRVP POC/VAL/VAH started ({exchange})...\n")
+    print(
+        f"\n[IND] FRVP POC/VAL/VAH started ({exchange})... "
+        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
+    )
     svc.run(
         exchange=exchange,
         periods=periods,
         cutt_off_date=flags.cutt_off_date,
         is_truncate_scope=flags.truncate_scope,
+        )
+    
+    print(
+        f"\n[IND] FRVP POC/VAL/VAH ended ({exchange})... "
+        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
     )

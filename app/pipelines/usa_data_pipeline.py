@@ -12,6 +12,7 @@ from app.infrastructure.api_clients.yahooquery_usa_provider import YahooQueryUsa
 from app.services.usa_historical_yahoo_fallback_service import UsaHistoricalYahooFallbackService
 
 from app.infrastructure.database.repository import PostgresRepository
+from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -38,7 +39,10 @@ class UsaDataPipelineFlags:
 
 
 async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipelineFlags) -> None:
-    print("\n[USA] Data pipeline started...\n")
+    print(
+        f"\n[USA] Data pipeline started... "
+        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
+    )
 
     # 1) Ingestion (Polygon)
     if flags.ingest:
@@ -107,6 +111,10 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
     else:
         print("[USA-YH] fallback disabled")
 
+    print(
+        f"[USA] data update completed "
+        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}"
+    )
     # 4) Sync raw -> bronze working
     if flags.sync_archive_to_working:
         print("\n[USA] Sync archive -> working started...\n")
@@ -122,6 +130,10 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
     else:
         print("[USA] sync skipped")
 
+    print(
+        f"[USA] date cloned into bronze from raw "
+        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}"
+    )
     # 5) Trim
     if flags.trim365:
         before_usa = repo.count_rows(schema="bronze", table="usa_1min_high_filtered")
@@ -136,7 +148,10 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
             lookback_days=flags.lookback_days,
             reference_days_ago=flags.reference_days_ago,
         )
-        print(f"[USA] trim completed. deleted_rows={deleted_usa}")
+        print(
+        f"[USA] trim365 completed. deleted_rows={deleted_usa} "
+        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}"
+            )
 
         after_usa = repo.count_rows(schema="bronze", table="usa_1min_high_filtered")
         print(f"[USA] rows after trim: {after_usa}")
@@ -172,4 +187,7 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
     )
     print(f"\n[USA] Final remaining failed symbols in logs: {len(final_failed)}\n")
 
-    print("\n[USA] Data pipeline finished.\n")
+    print(
+        f"\n[USA] Data pipeline finished. "
+        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
+    )

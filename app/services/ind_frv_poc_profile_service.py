@@ -297,7 +297,13 @@ class IndFrvPocProfileService:
             ts_value=peak_dt,
             ts_col="TS",
         )
-
+        highest_value = self.repo.get_high_at_ts(
+            table=source_table,
+            symbol=symbol,
+            ts_value=peak_dt,
+            ts_col="TS",
+            high_col="HIGH",
+        )
         # IMPORTANT: do not change FRVP math
         math_df = df_final.rename(columns={"TS": "DATETIME"})
         result = calculate_tv_frvp_v2(
@@ -305,7 +311,7 @@ class IndFrvPocProfileService:
             value_area_pct=68,
             row_size=1,
         )
-
+        
         runtime_str = datetime.now().strftime("%d-%m-%Y %H:%M")
 
         return {
@@ -317,6 +323,7 @@ class IndFrvPocProfileService:
 
             "MIN_DATE": min_date.to_pydatetime(),
             "HIGHEST_DATE": pd.to_datetime(peak_dt).to_pydatetime(),
+            "HIGHEST_VALUE": float(highest_value) if highest_value is not None else None,
             "MAX_DATE": max_date.to_pydatetime(),
 
             "HIGHEST_ROW_ID": str(highest_row_id) if highest_row_id else None,
