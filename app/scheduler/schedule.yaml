@@ -5,26 +5,26 @@ poll_interval_seconds: 20
 jobs:
   - name: bist_batch
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "09:00"
+    at: "20:00"
     cmd: ".venv/bin/python -u main_bist_data.py"
     lock: "bist_batch"
 
   - name: bist_indicators
-    run_days: [SUN] #remove if u will use depends on
-    at: "23:27" #remove if u will use depends on
-    # depends_on: "bist_batch" #open for depends usage
+    # run_days: [SUN] #remove if u will use depends on
+    # at: "23:27" #remove if u will use depends on
+    depends_on: "bist_batch" #open for depends usage
     cmd: ".venv/bin/python -u main_bist_indicators.py"
     lock: "bist_indicators"
 
   - name: usa_batch
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "00:40"
+    at: "06:00"
     cmd: ".venv/bin/python -u main_usa_data.py"
     lock: "usa_batch"
 
   - name: usa_indicators
-    # depends_on: "usa_batch"  #"bist_batch" #open for depends usage
-    run_days: [SUN] #remove if u will use depends on
-    at: "23:32" #remove if u will use depends on
+    depends_on: "usa_batch"  #"bist_batch" #open for depends usage
+    # run_days: [SUN] #remove if u will use depends on
+    # at: "23:32" #remove if u will use depends on
     cmd: ".venv/bin/python -u main_usa_indicators.py"
     lock: "usa_indicators"

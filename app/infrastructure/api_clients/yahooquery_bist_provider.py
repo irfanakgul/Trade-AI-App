@@ -50,12 +50,16 @@ class YahooQueryBistProvider(MarketDataProvider):
     def _fetch_chunk(self, yahoo_symbol: str, start_dt: datetime, end_dt: datetime) -> pd.DataFrame:
         t = Ticker(yahoo_symbol)
 
-        # Some versions accept start/end; if not, history may still return limited data.
-        # We still filter post-fetch to be safe.
+        # IMPORTANT:
+        # YahooQuery's "end" date can behave like an exclusive boundary (or same-day edge case),
+        # so we pass end_date + 1 day and then post-filter precisely by timestamps.
+        start_s = start_dt.date().isoformat()
+        end_s = (end_dt.date() + timedelta(days=1)).isoformat()
+
         df = t.history(
             interval=self.cfg.interval,
-            start=start_dt.date().isoformat(),
-            end=end_dt.date().isoformat(),
+            start=start_s,
+            end=end_s,
         )
 
         if df is None or len(df) == 0:
@@ -63,23 +67,26 @@ class YahooQueryBistProvider(MarketDataProvider):
 
         df = df.reset_index()
 
-        # Common output columns: date, open, high, low, close, volume
-        # Sometimes datetime column name differs; handle robustly.
+        # --- Normalize datetime column robustly ---
         if "date" in df.columns:
-            df["DATETIME"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
+            dt = pd.to_datetime(df["date"], errors="coerce")
         elif "datetime" in df.columns:
-            df["DATETIME"] = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
+            dt = pd.to_datetime(df["datetime"], errors="coerce")
         else:
-            # best-effort: try the first column as datetime
-            df["DATETIME"] = pd.to_datetime(df.iloc[:, 0], utc=True, errors="coerce")
+            dt = pd.to_datetime(df.iloc[:, 0], errors="coerce")
 
-        df = df.dropna(subset=["DATETIME"])
-        df = df.sort_values("DATETIME")
+        # If timestamps are tz-naive, assume BIST exchange time then convert to UTC
+        if getattr(dt.dt, "tz", None) is None:
+            dt = dt.dt.tz_localize(ZoneInfo("Europe/Istanbul"), ambiguous="infer", nonexistent="shift_forward")
 
-        # Filter strictly within chunk
+        dt = dt.dt.tz_convert(timezone.utc)
+        df["DATETIME"] = dt
+
+        df = df.dropna(subset=["DATETIME"]).sort_values("DATETIME")
+
+        # Strict filter inside chunk window (UTC)
         df = df[(df["DATETIME"] >= start_dt) & (df["DATETIME"] <= end_dt)]
 
-        # Normalize numeric columns
         for c in ["open", "high", "low", "close", "volume"]:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")

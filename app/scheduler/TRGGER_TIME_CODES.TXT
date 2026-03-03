@@ -13,8 +13,5 @@ tail -f logs/bist_indicators.out.log
 tail -f logs/usa_indicators.out.log
 
 
-
-
-
 ## calisan durdurmak icin> 
 python -u -m app.scheduler.daemon ...
