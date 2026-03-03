@@ -1,0 +1,17 @@
+## sifirlamak icin once bu 3 kodu kesinlikle calistir. yoksa trigger etmeyebilir>
+rm -f var/scheduler_state.json
+rm -f /tmp/tradeai_bist_batch.lock
+rm -f /tmp/tradeai_*.lock
+
+## yeniden schedule modunu aktif etmek icin
+.venv/bin/python -u -m app.scheduler.daemon --config app/scheduler/schedule.yaml
+
+## Printleri takip etmek icin.
+tail -f logs/bist_batch.out.log
+tail -f logs/usa_batch.out.log
+tail -f logs/bist_indicators.out.log
+tail -f logs/usa_indicators.out.log
+
+
+## calisan durdurmak icin> 
+python -u -m app.scheduler.daemon ...
