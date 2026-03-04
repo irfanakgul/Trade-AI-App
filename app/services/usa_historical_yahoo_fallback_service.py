@@ -14,8 +14,8 @@ class UsaYahooFallbackConfig:
     job_name: str = "usa_historical_ingestion"
     target_schema: str = "raw"
     target_table: str = "usa_1min_archive"
-    last_ts_schema: str = "bronze"
-    last_ts_table: str = "usa_1min_high_filtered"
+    last_ts_schema: str = "raw"
+    last_ts_table: str = "usa_1min_archive"
     last_ts_column: str = "TS"
 
     error_schema: str = "logs"
@@ -76,7 +76,7 @@ class UsaHistoricalYahooFallbackService:
             try:
                 start_dt = default_start
                 if use_db_last_timestamp:
-                    last_ts = self.repo.get_last_timestamp(
+                    last_ts = self.repo.get_last_ts_typed(
                         symbol=symbol,
                         schema=self.cfg.last_ts_schema,
                         table=self.cfg.last_ts_table,

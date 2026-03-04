@@ -15,8 +15,8 @@ class BistIngestionConfig:
     target_schema: str = "raw"
     target_table: str = "bist_1min_archive"
 
-    last_ts_schema: str = "bronze"
-    last_ts_table: str = "bist_1min_tv_past"
+    last_ts_schema: str = "raw"
+    last_ts_table: str = "bist_1min_archive"
     last_ts_column: str = "TS"  # typed timestamp
 
     error_schema: str = "logs"
@@ -109,11 +109,11 @@ class BistHistoricalIngestionService:
             try:
                 start_dt = default_start
                 if use_db_last_timestamp:
-                    last_ts = self.repo.get_last_timestamp(
+                    last_ts = self.repo.get_last_ts_typed(
                         symbol=symbol,
                         schema=self.cfg.last_ts_schema,
                         table=self.cfg.last_ts_table,
-                        ts_column=self.cfg.last_ts_column,  # TS
+                        ts_typed_col=self.cfg.last_ts_column,  # "TS"
                     )
                     if last_ts:
                         # Start from the first minute of that day to be safe

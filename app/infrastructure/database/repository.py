@@ -53,6 +53,27 @@ class PostgresRepository:
         with self.engine.connect() as conn:
             row = conn.execute(q, {"symbol": symbol}).fetchone()
         return row[0] if row and row[0] else None
+    
+
+    def get_last_ts_typed(
+        self,
+        symbol: str,
+        schema: str,
+        table: str,
+        ts_typed_col: str = "TS",
+    ) -> Optional[datetime]:
+        """
+        Returns MAX(TS) for a typed timestamp column.
+        Fast path: uses the typed column directly (no casting).
+        """
+        q = text(f"""
+            SELECT MAX("{ts_typed_col}") AS max_ts
+            FROM {schema}.{table}
+            WHERE "SYMBOL" = :symbol;
+        """)
+        with self.engine.connect() as conn:
+            row = conn.execute(q, {"symbol": symbol}).fetchone()
+        return row[0] if row and row[0] else None
 
     def bulk_insert_on_conflict_do_nothing(
         self,
@@ -881,3 +902,48 @@ class PostgresRepository:
             true_symbols = int(row[1] or 0)
 
         return total_symbols, true_symbols
+    
+
+    #daily chapter
+    def get_active_error_symbols(
+        self,
+        schema: str,
+        table: str,
+        job_name: str,
+        exchange: str,
+    ) -> List[str]:
+        """
+        Returns distinct symbols that currently exist in ingestion error table
+        for a given job+exchange.
+        """
+        q = text(f"""
+            SELECT DISTINCT "symbol"
+            FROM {schema}.{table}
+            WHERE "job_name" = :job_name
+              AND "exchange" = :exchange
+            ORDER BY "symbol";
+        """)
+        with self.engine.connect() as conn:
+            rows = conn.execute(q, {"job_name": job_name, "exchange": exchange}).fetchall()
+        return [r[0] for r in rows] if rows else []
+
+    def clear_ingestion_error(
+        self,
+        schema: str,
+        table: str,
+        job_name: str,
+        exchange: str,
+        symbol: str,
+    ) -> None:
+        """
+        Deletes any existing error rows for (job_name, exchange, symbol).
+        Idempotent: safe to call even if no rows exist.
+        """
+        q = text(f"""
+            DELETE FROM {schema}.{table}
+            WHERE "job_name" = :job_name
+              AND "exchange" = :exchange
+              AND "symbol" = :symbol;
+        """)
+        with self.engine.begin() as conn:
+            conn.execute(q, {"job_name": job_name, "exchange": exchange, "symbol": symbol})

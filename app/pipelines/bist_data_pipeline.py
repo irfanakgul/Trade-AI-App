@@ -15,12 +15,12 @@ from app.infrastructure.database.repository import PostgresRepository
 class BistDataPipelineFlags:
     ingest: bool = True
     fallback: bool = True
-    sync_archive_to_working: bool = True
-    trim365: bool = True
-    build_focus_dataset: bool = True
+    sync_archive_to_working: bool = False
+    trim365: bool = False
+    build_focus_dataset: bool = False
 
     use_db_last_timestamp: bool = True
-    start_date: str = "2026-01-01"
+    start_date: str = "2024-03-01"
     end_date: Optional[str] = None
 
     safety_days: int = 1

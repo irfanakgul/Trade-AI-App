@@ -9,10 +9,16 @@ jobs:
     cmd: ".venv/bin/python -u main_bist_data.py"
     lock: "bist_batch"
 
+    # daily calculations (raw+working+trim+focus)
+  - name: bist_daily_calc
+    at: "18:40"
+    cmd: ".venv/bin/python -u main_bist_daily_data.py"
+    lock: "bist_daily_calc"
+
   - name: bist_indicators
     # run_days: [SUN] #remove if u will use depends on
     # at: "23:27" #remove if u will use depends on
-    depends_on: "bist_batch" #open for depends usage
+    depends_on: "bist_daily_calc" #open for depends usage
     cmd: ".venv/bin/python -u main_bist_indicators.py"
     lock: "bist_indicators"
 
