@@ -1,3 +1,5 @@
+# main_bist_indicators.py
+
 from dotenv import load_dotenv
 
 from app.infrastructure.database.connection import Database
@@ -17,6 +19,17 @@ def main():
         truncate_scope=True,
         periods=["2year", "1year", "6months", "4months"],
         cutt_off_date=None,
+
+        build_converted_daily=True,
+
+        converted_daily_input_schema="silver",
+        converted_daily_input_table="FRVP_BIST_FOCUS_DATASET",
+        converted_daily_input_interval="daily",
+
+        converted_daily_output_schema="silver",
+        converted_daily_output_table="bist_focus_2e_indicators_converted_daily",
+
+        converted_daily_start_trading_days_back=30,
     )
 
     run_indicators_for_exchange(repo, "BIST", flags)

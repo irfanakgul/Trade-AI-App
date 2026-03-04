@@ -3,15 +3,11 @@ run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
 poll_interval_seconds: 20
 
 jobs:
-  - name: bist_batch
-    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "20:00"
-    cmd: ".venv/bin/python -u main_bist_data.py"
-    lock: "bist_batch"
 
     # daily calculations (raw+working+trim+focus)
   - name: bist_daily_calc
-    at: "18:40"
+    run_days: [MON, TUE, WED, THU, FRI]
+    at: "21:27"
     cmd: ".venv/bin/python -u main_bist_daily_data.py"
     lock: "bist_daily_calc"
 
@@ -22,9 +18,16 @@ jobs:
     cmd: ".venv/bin/python -u main_bist_indicators.py"
     lock: "bist_indicators"
 
+  - name: bist_batch #min data update
+    run_days: [MON, TUE, WED, THU, FRI]
+    at: "21:45"
+    # depends_on: "bist_indicators" #open for depends usage
+    cmd: ".venv/bin/python -u main_bist_data.py"
+    lock: "bist_batch"
+
   - name: usa_batch
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "06:00"
+    at: "22:00"
     cmd: ".venv/bin/python -u main_usa_data.py"
     lock: "usa_batch"
 
