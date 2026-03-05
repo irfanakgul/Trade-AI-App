@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+import uuid
+from app.services.dq_generic_service import DQGenericService, DQConfig # type: ignore
 
 from app.infrastructure.database.repository import PostgresRepository
 
@@ -54,6 +56,9 @@ class BistDailyDataPipelineFlags:
     focus_table: str = "FRVP_BIST_FOCUS_DATASET"
     high_col: str = "HIGH"
     min_trading_days: int = 15
+
+    dq: bool = True
+    apply_dq_out_scope: bool = True # dq failed symbols will be out of scope for ema and further.False include, True exclude
 
 
 async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDailyDataPipelineFlags):
@@ -223,3 +228,29 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
         f"\n[BIST-DAILY] pipeline finished. "
         f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
     )
+
+    if flags.dq:
+        run_id = uuid.uuid4()
+        
+        deleted = repo.clear_dq_for_exchange(schema="logs", table="DQ_generic_check", exchange="BIST")
+        print(f"[DQ] cleared previous DQ logs for BIST. deleted_rows={deleted}")
+
+        dq = DQGenericService(repo=repo, config=DQConfig(job_name="bist_daily_data_pipeline"))
+        dq.truncate_logs()
+
+        cols = ["SYMBOL", "TIMESTAMP", "OPEN", "LOW", "HIGH", "CLOSE", "VOLUME"]
+
+        # BIST focus
+        dq.run_for_table(
+            run_id=run_id,
+            exchange="BIST",
+            schema="silver",
+            table="FRVP_BIST_FOCUS_DATASET",
+            interval="daily",
+            ts_col="TS",  # if exists; otherwise "TIMESTAMP"
+            columns=cols,
+        )
+        print(f"[DQ - BIST] Completed. run_id={run_id}")
+        
+        if flags.apply_dq_out_scope:
+            repo.apply_dq_to_poc_profile(reset_in_scope=True)  # or False if you don't want to reset IN_SCOPE  # or False if you don't want to reset IN_SCOPE

@@ -19,6 +19,8 @@ async def main():
         sync_archive_to_working=False,
         trim365=False,
         build_focus_dataset=False,
+        dq = False,
+        apply_dq_out_scope = False # dq failed symbols will be out of scope for ema and further.False include, True exclude
     )
 
     await run_bist_data_pipeline(repo, flags)

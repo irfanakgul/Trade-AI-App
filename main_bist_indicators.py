@@ -15,12 +15,12 @@ def main():
     repo = PostgresRepository(engine)
 
     flags = IndicatorsFlags(
-        frvp=True,
-        truncate_scope=True,
+        frvp=False,
+        truncate_scope=False,
         periods=["2year", "1year", "6months", "4months"],
         cutt_off_date=None,
 
-        build_converted_daily=True,
+        build_converted_daily=False,
 
         converted_daily_input_schema="silver",
         converted_daily_input_table="FRVP_BIST_FOCUS_DATASET",

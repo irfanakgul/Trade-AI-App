@@ -7,7 +7,7 @@ jobs:
     # daily calculations (raw+working+trim+focus)
   - name: bist_daily_calc
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "21:27"
+    at: "02:25"
     cmd: ".venv/bin/python -u main_bist_daily_data.py"
     lock: "bist_daily_calc"
 
@@ -19,15 +19,15 @@ jobs:
     lock: "bist_indicators"
 
   - name: bist_batch #min data update
-    run_days: [MON, TUE, WED, THU, FRI]
-    at: "21:45"
-    # depends_on: "bist_indicators" #open for depends usage
+    # run_days: [MON, TUE, WED, THU, FRI]
+    # at: "21:45"
+    depends_on: "bist_indicators" #open for depends usage
     cmd: ".venv/bin/python -u main_bist_data.py"
-    lock: "bist_batch"
+    lock: "bist_pull_1min"
 
   - name: usa_batch
-    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "22:00"
+    run_days: [MON, TUE, WED, THU, FRI, SAT]
+    at: "07:00"
     cmd: ".venv/bin/python -u main_usa_data.py"
     lock: "usa_batch"
 
