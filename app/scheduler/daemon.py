@@ -133,7 +133,7 @@ def load_schedule(path: Path) -> ScheduleConfig:
     raw = yaml.safe_load(path.read_text())
 
     tz = raw.get("timezone", "Europe/Amsterdam")
-    poll = int(raw.get("poll_interval_seconds", 20))
+    poll = int(raw.get("poll_interval_seconds", 1800)) #print per seconds to show it's working
 
     rd = raw.get("run_days", ["MON", "TUE", "WED", "THU", "FRI"])
     run_days = _parse_run_days(rd, default_days=set(WEEKDAY_MAP.values()))
@@ -280,10 +280,10 @@ def main() -> int:
         f"[SCHED] loaded jobs={len(cfg.jobs)} tz={cfg.timezone} poll={cfg.poll_interval_seconds}s workdir={workdir}",
         flush=True,
     )
-
+    print(f'⏰ AUTO SCHEDULER HAS BEEN STARTED AT {now_in_tz(cfg.timezone)}')
     while True:
         dt = now_in_tz(cfg.timezone)
-        print(f"[SCHED] now={dt.strftime('%Y-%m-%d %H:%M:%S')} weekday={dt.weekday()}", flush=True)
+        print(f"[SCHED] now={dt.strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
 
         # If no jobs are runnable today (considering per-job run_days overrides), skip.
         if not any_jobs_runnable_today(cfg, dt):

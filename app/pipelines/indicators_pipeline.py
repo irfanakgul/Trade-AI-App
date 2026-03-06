@@ -6,6 +6,8 @@ from typing import List, Optional
 
 from app.infrastructure.database.repository import PostgresRepository
 from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
+from app.services.ind_ema_focus_service import IndEmaFocusService
+
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,7 @@ class IndicatorsFlags:
     # True → dakikalık veya günlük dataset'i
     # EMA/RSI hesaplamaları için günlük formata dönüştürür.
 
+
     converted_daily_input_schema: str = "silver"
     # Kaynak dataset'in bulunduğu schema.
 
@@ -65,6 +68,14 @@ class IndicatorsFlags:
     converted_daily_start_trading_days_back: int = 30
     # Son kaç trading day kullanılacağını belirler.
     # Örn: 30 → son 30 işlem günü kullanılır.
+
+    #ema flags
+    ema_calc: bool = True
+    ema_input_schema: str = ''
+    ema_input_table: str = ''
+    ema_exchange: str = ''
+    ema_lookback_days: int = 20 #default 20 day
+    ema_is_truncate_scope: bool = True
 
 
 def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: IndicatorsFlags) -> None:
@@ -99,12 +110,20 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
     # ----------------------------------------------------------
     # 2) Build "converted daily" dataset (optional)
     # ----------------------------------------------------------
-    # Priority:
-    # - If build_converted_daily=True -> use parametric inputs from flags
-    # - Else if build_converted_daily_for_ema_rsi=True -> use legacy hardcoded mapping
     if flags.build_converted_daily:
         if not flags.converted_daily_input_table or not flags.converted_daily_output_table:
-            raise ValueError("converted_daily_input_table and converted_daily_output_table must be set when build_converted_daily=True")
+            raise ValueError(
+                "converted_daily_input_table and converted_daily_output_table "
+                "must be set when build_converted_daily=True"
+            )
+
+        print(
+            f"[IND] Converted-daily building... exchange={exchange} "
+            f"source={flags.converted_daily_input_schema}.{flags.converted_daily_input_table} "
+            f"interval={flags.converted_daily_input_interval} "
+            f"days_back={flags.converted_daily_start_trading_days_back}",
+            flush=True
+        )
 
         stats = repo.build_converted_daily_for_ema_rsi_scope(
             exchange=exchange,
@@ -121,56 +140,24 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         print(
             f'[IND] Converted-daily built. exchange={stats["exchange"]} '
             f'symbols: {stats["before_symbols"]} -> {stats["after_symbols"]}, '
-            f'rows={stats["after_rows"]} target={stats["target"]}'
-        )
-
-    elif flags.build_converted_daily_for_ema_rsi:
-        # Legacy mapping (works with your current focus tables)
-        if exchange == "BIST":
-            print(
-                f"[IND] Converted-daily building... exchange={exchange} "
-                f"source={flags.converted_daily_input_schema}.{flags.converted_daily_input_table} "
-                f"interval={flags.converted_daily_input_interval} "
-                f"days_back={flags.converted_daily_start_trading_days_back}",
-                flush=True
-            )
-            stats = repo.build_converted_daily_for_ema_rsi_scope(
-                exchange="BIST",
-                interval="daily",
-                start_trading_days_back=flags.converted_daily_trading_days_back,
-                source_schema="silver",
-                source_table="FRVP_BIST_FOCUS_DATASET",
-                ts_col="TS",
-                high_col="HIGH",
-                target_schema="silver",
-                target_table="bist_focus_2e_indicators_converted_daily",
-            )
-        elif exchange == "USA":
-            print(
-                f"[IND] Converted-daily building... exchange={exchange} "
-                f"source={flags.converted_daily_input_schema}.{flags.converted_daily_input_table} "
-                f"interval={flags.converted_daily_input_interval} "
-                f"days_back={flags.converted_daily_start_trading_days_back}",
-                flush=True
-            )
-            stats = repo.build_converted_daily_for_ema_rsi_scope(
-                exchange="USA",
-                interval="1min",
-                start_trading_days_back=flags.converted_daily_trading_days_back,
-                source_schema="silver",
-                source_table="FRVP_USA_FOCUS_DATASET",
-                ts_col="TS",
-                high_col="HIGH",
-                target_schema="silver",
-                target_table="usa_focus_2e_indicators_converted_daily",
-            )
-        else:
-            raise ValueError(f"Unsupported exchange for legacy converted-daily: {exchange}")
-
-        print(
-            f'[IND] Converted-daily built. exchange={stats["exchange"]} '
-            f'symbols: {stats["before_symbols"]} -> {stats["after_symbols"]}, '
-            f'rows={stats["after_rows"]} target={stats["target"]}'
+            f'rows={stats["after_rows"]} target={stats["target"]}',
+            flush=True
         )
     else:
-        print(f"[IND] Converted-daily step skipped for exchange={exchange}")
+        print(f"[IND] Converted-daily step skipped for exchange={exchange}", flush=True)
+
+    # ----------------------------------------------------------
+    # 3) EMA CALC CHAPTER
+    # ----------------------------------------------------------
+
+    if flags.ema_calc:
+        svc = IndEmaFocusService(repo=repo)
+        svc.run(
+            exchange=flags.ema_exchange,
+            input_schema=flags.ema_input_schema,
+            input_table=flags.ema_input_table,
+            lookback_days=flags.ema_lookback_days,          # parametrik
+            is_truncate_scope=flags.ema_is_truncate_scope,    # exchange bazlı delete
+        )
+
+

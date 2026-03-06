@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple, Dict, Any
-from sqlalchemy import text
+from sqlalchemy import text,bindparam
 from sqlalchemy.engine import Engine
 from datetime import datetime,timezone,timedelta
 import json
@@ -1418,3 +1418,91 @@ class PostgresRepository:
 
         print(f"[DQ] FAILED SYMBOL COUNT | USA = {failed_count_usa} | BIST = {failed_count_bist}")
         print(f"[DQ] After excluding failed DQ, USA UNIQUE SYMBOL COUNT = {remaining_scope_usa} | BIST UNIQUE SYMBOL COUNT = {remaining_scope_bist} ")
+
+    ########### EMA CALC CHAPTER #########
+    def get_ema_focus_symbols(self, exchange: str) -> list[str]:
+        q = text("""
+            SELECT DISTINCT "SYMBOL"
+            FROM silver."IND_FRV_POC_PROFILE"
+            WHERE "EXCHANGE" = :exchange
+            AND "IN_SCOPE_FOR_EMA_RSI" = TRUE
+            ORDER BY "SYMBOL";
+        """)
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange}).fetchall()
+        return [r[0] for r in rows]
+    
+
+    def delete_ind_ema_scope(self, exchange: str) -> int:
+        q = text("""
+            DELETE FROM silver."IND_EMA_FOCUS"
+            WHERE "EXCHANGE" = :exchange;
+        """)
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+
+    def fetch_last_n_days_close_for_symbols(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+        symbols: list[str],
+        n_days: int,
+        ts_col: str = "TIMESTAMP",
+        close_col: str = "CLOSE",
+    ) -> list[dict]:
+        if not symbols:
+            return []
+
+        # expanding bind param (IN :symbols) için
+        q = text(f"""
+            WITH ranked AS (
+                SELECT
+                    "EXCHANGE" AS exchange,
+                    "SYMBOL" AS symbol,
+                    "{ts_col}" AS ts,
+                    "{close_col}"::double precision AS close,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY "SYMBOL"
+                        ORDER BY "{ts_col}" DESC
+                    ) AS rn
+                FROM {schema}."{table}"
+                WHERE "EXCHANGE" = :exchange
+                AND "SYMBOL" IN :symbols
+                AND "{ts_col}" IS NOT NULL
+                AND "{close_col}" IS NOT NULL
+            )
+            SELECT exchange, symbol, ts, close
+            FROM ranked
+            WHERE rn <= :n_days
+            ORDER BY symbol ASC, ts ASC;
+        """).bindparams(bindparam("symbols", expanding=True))
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange, "symbols": symbols, "n_days": n_days}).fetchall()
+
+        return [{"EXCHANGE": r[0], "SYMBOL": r[1], "TIMESTAMP": r[2], "CLOSE": r[3]} for r in rows]
+    
+    def insert_ind_ema_focus_rows(self, rows: list[dict]) -> int:
+        if not rows:
+            return 0
+
+        q = text("""
+            INSERT INTO silver."IND_EMA_FOCUS" (
+                "EXCHANGE","SYMBOL","END_DATE",
+                "EMA5","EMA20","EMA_STATUS","EMA_CROSS","DAYS_SINCE_CROSS",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,:SYMBOL,:END_DATE,
+                :EMA5,:EMA20,:EMA_STATUS,:EMA_CROSS,:DAYS_SINCE_CROSS,
+                :CREATED_AT
+            );
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)
