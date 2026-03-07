@@ -11,6 +11,7 @@ def main():
     load_dotenv()
 
     db = Database()
+    db.print_connection_info()
     engine = db.connect()
     repo = PostgresRepository(engine)
 

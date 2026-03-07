@@ -1,0 +1,35 @@
+psql postgres  < postgresql i ac
+
+psql -d trade_app_local < local db ye baglan
+
+psql -U yasinyilmaz -d trade_app_local < user ile dbye baglanmak
+psql -h 127.0.0.1 -p 5432 -U yasinyilmaz -d trade_app_local  < host ile dbye baglanmak
+
+
+\q  < postgresqlden cikmak, yada exit enter
+
+\l < database listesini almak
+\c trade_app_local < db arasi gecis yapmak
+\dn   < schema lari listeler
+\dt   < tum tablolari listeler
+
+# belirli schemadaki tablolari listeler
+\dt bronze.*
+\dt raw.*
+\dt silver.*
+\dt logs.*
+
+\d bronze.bist_1min_tv_past   < bir tablonun sutunlarini goster
+\d silver."FRVP_FOCUS_SYMBOL_LIST"   < bir tablonun sutunlarini goster
+
+
+### database sil. ama once mevcut dbden cik. db icinde silme yapamazsin. 
+\c postgres < dbden cik
+DROP DATABASE trade_app_local;   < dbyi sil
+dropdb trade_app_local  < terminalden dbyi sil
+
+
+SELECT pg_size_pretty(pg_database_size('trade_app_local')) AS db_size;   < sadece bbelirli dbnin boyutunu gosterir
+
+
+SELECT current_database(); < bagli db yi goster

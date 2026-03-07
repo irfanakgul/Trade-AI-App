@@ -16,13 +16,14 @@ def main():
     load_dotenv()
 
     db = Database()
+    db.print_connection_info()
     engine = db.connect()
     repo = PostgresRepository(engine)
 
     flags = IndicatorsFlags(
         # --- FRVP ---
-        frvp=False,
-        truncate_scope=False,
+        frvp=True,
+        truncate_scope=True,
         periods=["2year", "1year", "6months", "4months"],
         cutt_off_date=None,
 

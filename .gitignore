@@ -231,3 +231,8 @@ __pycache__/
 # PySpark temp
 metastore_db/
 spark-warehouse/
+
+# blocal db backup files
+app/backup/data/
+
+./
