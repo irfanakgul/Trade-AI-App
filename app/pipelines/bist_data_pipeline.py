@@ -2,6 +2,8 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 from datetime import datetime
+from app.services.dq_generic_service import DQGenericService, DQConfig
+import uuid
 
 
 from app.infrastructure.api_clients.yahooquery_bist_provider import YahooQueryBistProvider
@@ -15,12 +17,14 @@ from app.infrastructure.database.repository import PostgresRepository
 class BistDataPipelineFlags:
     ingest: bool = True
     fallback: bool = True
-    sync_archive_to_working: bool = True
-    trim365: bool = True
-    build_focus_dataset: bool = True
+    sync_archive_to_working: bool = False
+    trim365: bool = False
+    build_focus_dataset: bool = False
+    dq: bool = False
+    apply_dq_out_scope: bool = False # dq failed symbols will be out of scope for ema and further.False include, True exclude
 
     use_db_last_timestamp: bool = True
-    start_date: str = "2026-01-01"
+    start_date: str = "2024-03-01"
     end_date: Optional[str] = None
 
     safety_days: int = 1
@@ -41,6 +45,10 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
 
     # 1) Ingestion (yahooquery)
     if flags.ingest:
+        #remove last n days data from raw/bronze tables
+        repo.delete_recent_days_by_last_ts(schema='raw',table='bist_1min_archive',ts_col= "TS",days_back = 1)
+        repo.delete_recent_days_by_last_ts(schema='bronze',table='bist_1min_tv_past',ts_col= "TS",days_back = 1)
+
         bist_primary_provider = YahooQueryBistProvider()
         bist_svc = BistHistoricalIngestionService(repo=repo, provider=bist_primary_provider)
 
@@ -153,3 +161,30 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
         f"\n[BIST] Data pipeline finished. "
         f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
     )
+
+
+    if flags.dq:
+        run_id = uuid.uuid4()
+        deleted = repo.clear_dq_for_exchange(schema="logs", table="DQ_generic_check", exchange="BIST")
+        print(f"[DQ] cleared previous DQ logs for BIST. deleted_rows={deleted}")
+
+
+        dq = DQGenericService(repo=repo, config=DQConfig(job_name="bist_daily_data_pipeline"))
+        dq.truncate_logs()
+
+        cols = ["SYMBOL", "TIMESTAMP", "OPEN", "LOW", "HIGH", "CLOSE", "VOLUME"]
+
+        # BIST focus
+        dq.run_for_table(
+            run_id=run_id,
+            exchange="BIST",
+            schema="silver",
+            table="FRVP_BIST_FOCUS_DATASET",
+            interval="1min",
+            ts_col="TS",  # if exists; otherwise "TIMESTAMP"
+            columns=cols,
+        )
+        print(f"[DQ - BIST] Completed. run_id={run_id}")
+
+        if flags.apply_dq_out_scope:
+            repo.apply_dq_to_poc_profile(reset_in_scope=True)  # or False if you don't want to reset IN_SCOPE

@@ -3,7 +3,8 @@ from dotenv import load_dotenv
 
 from app.infrastructure.database.connection import Database
 from app.infrastructure.database.repository import PostgresRepository
-from app.pipelines.usa_data_pipeline import run_usa_data_pipeline, UsaDataPipelineFlags
+from app.pipelines.bist_daily_data_pipeline import run_bist_daily_data_pipeline, BistDailyDataPipelineFlags
+
 
 
 async def main():
@@ -14,18 +15,20 @@ async def main():
     engine = db.connect()
     repo = PostgresRepository(engine)
 
-    flags = UsaDataPipelineFlags(
+    flags = BistDailyDataPipelineFlags(
         ingest=True,
-        fallback_twelvedata=True,
-        fallback_yahoo=True,
+        fallback=True,
         sync_archive_to_working=True,
         trim365=True,
-        build_focus_dataset=True, # prep focus symbols and datasets for all indicators
+        build_focus_dataset=True,
+        use_db_last_timestamp=True,
+        start_date="2026-02-01", #if use_db_last_timestamp = False
+        end_date=None,
         dq = True,
         apply_dq_out_scope = True # dq failed symbols will be out of scope for ema and further.False include, True exclude
     )
 
-    await run_usa_data_pipeline(repo, flags)
+    await run_bist_daily_data_pipeline(repo, flags)
 
 
 if __name__ == "__main__":

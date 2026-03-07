@@ -1,24 +1,33 @@
 timezone: Europe/Amsterdam
 run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-poll_interval_seconds: 20
+poll_interval_seconds: 60
 
 jobs:
-  - name: bist_batch
-    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "20:00"
-    cmd: ".venv/bin/python -u main_bist_data.py"
-    lock: "bist_batch"
+
+    # daily calculations (raw+working+trim+focus)
+  - name: bist_daily_calc
+    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
+    at: "01:51"
+    cmd: ".venv/bin/python -u main_bist_daily_data.py"
+    lock: "bist_daily_calc"
 
   - name: bist_indicators
     # run_days: [SUN] #remove if u will use depends on
     # at: "23:27" #remove if u will use depends on
-    depends_on: "bist_batch" #open for depends usage
+    depends_on: "bist_daily_calc" #open for depends usage
     cmd: ".venv/bin/python -u main_bist_indicators.py"
     lock: "bist_indicators"
 
+  - name: bist_batch #min data update
+    # run_days: [MON, TUE, WED, THU, FRI]
+    # at: "21:45"
+    depends_on: "bist_indicators" #open for depends usage
+    cmd: ".venv/bin/python -u main_bist_data.py"
+    lock: "bist_batch"
+
   - name: usa_batch
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "06:00"
+    at: "07:00"
     cmd: ".venv/bin/python -u main_usa_data.py"
     lock: "usa_batch"
 
@@ -28,3 +37,21 @@ jobs:
     # at: "23:32" #remove if u will use depends on
     cmd: ".venv/bin/python -u main_usa_indicators.py"
     lock: "usa_indicators"
+
+  ### backup and restore for postgresql  ####
+  - name: backup_to_local_trigger
+    # depends_on: "usa_batch"  #"bist_batch" #open for depends usage
+    run_days: [MON, TUE, WED, THU, FRI, SAT] #remove if u will use depends on
+    at: "13:30" #remove if u will use depends on
+    cmd: ".venv/bin/python -u main_backup_trigger.py"
+    lock: "backup_to_local_trigger"
+
+  - name: restore_from_backup
+    depends_on: "backup_to_local_trigger"  #"backup_trigger" #open for depends usage
+    # run_days: [SUN] #remove if u will use depends on
+    # at: "23:32" #remove if u will use depends on
+    cmd: ".venv/bin/python -u main_local_restore_trigger.py"
+    lock: "restore_from_backup"
+
+  
+

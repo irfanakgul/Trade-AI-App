@@ -13,8 +13,8 @@ from app.infrastructure.api_clients.market_data_provider import MarketDataProvid
 class UsaIngestionConfig:
     target_schema: str = "raw"
     target_table: str = "usa_1min_archive"
-    last_ts_schema: str = "bronze"
-    last_ts_table: str = "usa_1min_high_filtered"
+    last_ts_schema: str = "raw"
+    last_ts_table: str = "usa_1min_archive"
     last_ts_column: str = "TS"  # Use typed TS for speed and correctness
     interval_tag: str = "1min"
     source: str = "polygon"
@@ -117,11 +117,11 @@ class UsaHistoricalIngestionService:
             try:
                 start_dt = default_start
                 if use_db_last_timestamp:
-                    last_ts = self.repo.get_last_timestamp(
+                    last_ts = self.repo.get_last_ts_typed(
                         symbol=symbol,
                         schema=self.cfg.last_ts_schema,
                         table=self.cfg.last_ts_table,
-                        ts_column=self.cfg.last_ts_column,  # TS
+                        ts_typed_col=self.cfg.last_ts_column,  # "TS"
                     )
                     if last_ts:
                         start_dt = last_ts.date()

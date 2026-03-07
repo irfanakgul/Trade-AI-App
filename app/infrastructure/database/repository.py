@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple, Dict, Any
-from sqlalchemy import text
+from sqlalchemy import text,bindparam
 from sqlalchemy.engine import Engine
 from datetime import datetime,timezone,timedelta
+import json
 
 @dataclass(frozen=True)
 class InScopeSymbol:
@@ -47,6 +48,27 @@ class PostgresRepository:
         """
         q = text(f"""
             SELECT MAX(("{ts_column}")::timestamp) AS max_ts
+            FROM {schema}.{table}
+            WHERE "SYMBOL" = :symbol;
+        """)
+        with self.engine.connect() as conn:
+            row = conn.execute(q, {"symbol": symbol}).fetchone()
+        return row[0] if row and row[0] else None
+    
+
+    def get_last_ts_typed(
+        self,
+        symbol: str,
+        schema: str,
+        table: str,
+        ts_typed_col: str = "TS",
+    ) -> Optional[datetime]:
+        """
+        Returns MAX(TS) for a typed timestamp column.
+        Fast path: uses the typed column directly (no casting).
+        """
+        q = text(f"""
+            SELECT MAX("{ts_typed_col}") AS max_ts
             FROM {schema}.{table}
             WHERE "SYMBOL" = :symbol;
         """)
@@ -881,3 +903,677 @@ class PostgresRepository:
             true_symbols = int(row[1] or 0)
 
         return total_symbols, true_symbols
+    
+
+    #daily chapter
+    def get_active_error_symbols(
+        self,
+        schema: str,
+        table: str,
+        job_name: str,
+        exchange: str,
+    ) -> List[str]:
+        """
+        Returns distinct symbols that currently exist in ingestion error table
+        for a given job+exchange.
+        """
+        q = text(f"""
+            SELECT DISTINCT "symbol"
+            FROM {schema}.{table}
+            WHERE "job_name" = :job_name
+              AND "exchange" = :exchange
+            ORDER BY "symbol";
+        """)
+        with self.engine.connect() as conn:
+            rows = conn.execute(q, {"job_name": job_name, "exchange": exchange}).fetchall()
+        return [r[0] for r in rows] if rows else []
+
+    def clear_ingestion_error(
+        self,
+        schema: str,
+        table: str,
+        job_name: str,
+        exchange: str,
+        symbol: str,
+    ) -> None:
+        """
+        Deletes any existing error rows for (job_name, exchange, symbol).
+        Idempotent: safe to call even if no rows exist.
+        """
+        q = text(f"""
+            DELETE FROM {schema}.{table}
+            WHERE "job_name" = :job_name
+              AND "exchange" = :exchange
+              AND "symbol" = :symbol;
+        """)
+        with self.engine.begin() as conn:
+            conn.execute(q, {"job_name": job_name, "exchange": exchange, "symbol": symbol})
+
+    ######## convert from daily from min bars   ########
+    def ensure_converted_daily_table(self, schema: str, table: str) -> None:
+        """
+        Ensures the converted-daily table exists with the expected schema and PK.
+        """
+        ddl = f"""
+        CREATE SCHEMA IF NOT EXISTS {schema};
+
+        CREATE TABLE IF NOT EXISTS {schema}."{table}" (
+            "EXCHANGE"       text NOT NULL,
+            "SYMBOL"         text NOT NULL,
+            "INTERVAL"       text NOT NULL,
+            "TIMESTAMP"      timestamp NOT NULL,
+
+            "MIN_DATE"       timestamp NULL,
+            "MAX_DATE"       timestamp NULL,
+            "HIGHEST_VALUE"  double precision NULL,
+            "HIGHEST_DATE"   timestamp NULL,
+
+            "OPEN"           double precision NULL,
+            "HIGH"           double precision NULL,
+            "LOW"            double precision NULL,
+            "CLOSE"          double precision NULL,
+            "VOLUME"         double precision NULL,
+
+            "BAR_COUNT"      integer NOT NULL DEFAULT 0,
+
+            CONSTRAINT "{table}_pk" PRIMARY KEY ("EXCHANGE","SYMBOL","TIMESTAMP")
+        );
+        """
+        with self.engine.begin() as conn:
+            conn.execute(text(ddl))
+
+        # Helpful index for reads
+        with self.engine.begin() as conn:
+            conn.execute(text(f"""
+                CREATE INDEX IF NOT EXISTS ix_{table}_symbol_ts
+                ON {schema}."{table}" ("SYMBOL","TIMESTAMP");
+            """))
+
+    def truncate_table(self, schema: str, table: str) -> None:
+        """
+        Truncates a table (fast delete).
+        """
+        with self.engine.begin() as conn:
+            conn.execute(text(f'TRUNCATE TABLE {schema}."{table}";'))
+
+    def build_converted_daily_for_ema_rsi_scope(
+        self,
+        exchange: str,
+        interval: str,  # "1min" or "daily"
+        start_trading_days_back: int,
+        source_schema: str,
+        source_table: str,
+        ts_col: str,
+        high_col: str,
+        target_schema: str,
+        target_table: str,
+    ) -> dict:
+        exchange = exchange.upper().strip()
+        interval = interval.lower().strip()
+
+        # 1) Scope symbols
+        q_syms = text("""
+            SELECT DISTINCT "SYMBOL"
+            FROM silver."IND_FRV_POC_PROFILE"
+            WHERE "EXCHANGE" = :exchange
+            AND "IN_SCOPE_FOR_EMA_RSI" = true
+            ORDER BY "SYMBOL";
+        """)
+
+        with self.engine.begin() as conn:
+            syms = [r[0] for r in conn.execute(q_syms, {"exchange": exchange}).fetchall()]
+
+        before_symbols = len(syms)
+
+        # Always truncate target (your requirement)
+        with self.engine.begin() as conn:
+            conn.execute(text(f'TRUNCATE TABLE {target_schema}."{target_table}";'))
+
+        if not syms:
+            return {
+                "exchange": exchange,
+                "before_symbols": 0,
+                "after_symbols": 0,
+                "after_rows": 0,
+                "target": f'{target_schema}.{target_table}',
+            }
+
+        # 2) Build
+        # NOTE: We compute trading days from the data itself (distinct day buckets), so weekends drop naturally.
+        if interval == "daily":
+            # Daily input: keep last N trading days (days present in data), bar_count=0
+            q = text(f"""
+                WITH scope AS (
+                    SELECT UNNEST(CAST(:symbols AS text[])) AS symbol
+                ),
+                base AS (
+                    SELECT
+                        t."SYMBOL" AS symbol,
+                        (t."{ts_col}")::timestamp AS ts,
+                        date_trunc('day', (t."{ts_col}")::timestamp) AS day_ts,
+                        t."OPEN"::double precision AS open,
+                        t."HIGH"::double precision AS high,
+                        t."LOW"::double precision AS low,
+                        t."CLOSE"::double precision AS close,
+                        t."VOLUME"::double precision AS volume
+                    FROM {source_schema}."{source_table}" t
+                    JOIN scope s ON s.symbol = t."SYMBOL"
+                    WHERE t."{ts_col}" IS NOT NULL
+                    AND t."OPEN" IS NOT NULL
+                    AND t."HIGH" IS NOT NULL
+                    AND t."LOW"  IS NOT NULL
+                    AND t."CLOSE" IS NOT NULL
+                ),
+                days_ranked AS (
+                    SELECT symbol, day_ts,
+                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY day_ts DESC) AS rn
+                    FROM (SELECT DISTINCT symbol, day_ts FROM base) d
+                ),
+                keep_days AS (
+                    SELECT symbol, day_ts
+                    FROM days_ranked
+                    WHERE rn <= :n_days
+                ),
+                filtered AS (
+                    SELECT b.*
+                    FROM base b
+                    JOIN keep_days k
+                    ON k.symbol = b.symbol AND k.day_ts = b.day_ts
+                ),
+                sym_stats AS (
+                    SELECT
+                        symbol,
+                        MIN(ts) AS min_date,
+                        MAX(ts) AS max_date,
+                        MAX(high) AS highest_value
+                    FROM filtered
+                    GROUP BY symbol
+                ),
+                highest_date AS (
+                    SELECT f.symbol, MIN(f.ts) AS highest_date
+                    FROM filtered f
+                    JOIN sym_stats s
+                    ON s.symbol = f.symbol AND f.high = s.highest_value
+                    GROUP BY f.symbol
+                )
+                INSERT INTO {target_schema}."{target_table}" (
+                    "EXCHANGE","SYMBOL","INTERVAL","TIMESTAMP",
+                    "MIN_DATE","MAX_DATE","HIGHEST_VALUE","HIGHEST_DATE",
+                    "OPEN","HIGH","LOW","CLOSE","VOLUME","BAR_COUNT"
+                )
+                SELECT
+                    :exchange AS "EXCHANGE",
+                    f.symbol AS "SYMBOL",
+                    'DAILY' AS "INTERVAL",
+                    f.day_ts AS "TIMESTAMP",
+                    s.min_date AS "MIN_DATE",
+                    s.max_date AS "MAX_DATE",
+                    s.highest_value AS "HIGHEST_VALUE",
+                    h.highest_date AS "HIGHEST_DATE",
+                    f.open AS "OPEN",
+                    f.high AS "HIGH",
+                    f.low  AS "LOW",
+                    f.close AS "CLOSE",
+                    COALESCE(f.volume, 0.0) AS "VOLUME",
+                    0 AS "BAR_COUNT"
+                FROM filtered f
+                JOIN sym_stats s ON s.symbol = f.symbol
+                JOIN highest_date h ON h.symbol = f.symbol
+                ORDER BY f.symbol, f.day_ts;
+            """)
+
+            params = {"exchange": exchange, "symbols": syms, "n_days": int(start_trading_days_back)}
+
+        elif interval == "1min":
+            # Minute input: aggregate to daily with correct SUM(VOLUME) and COUNT(*)
+            q = text(f"""
+                WITH scope AS (
+                    SELECT UNNEST(CAST(:symbols AS text[])) AS symbol
+                ),
+                base AS (
+                    SELECT
+                        t."SYMBOL" AS symbol,
+                        (t."{ts_col}")::timestamp AS ts,
+                        date_trunc('day', (t."{ts_col}")::timestamp) AS day_ts,
+                        t."OPEN"::double precision AS open,
+                        t."HIGH"::double precision AS high,
+                        t."LOW"::double precision AS low,
+                        t."CLOSE"::double precision AS close,
+                        COALESCE(t."VOLUME", 0)::double precision AS volume
+                    FROM {source_schema}."{source_table}" t
+                    JOIN scope s ON s.symbol = t."SYMBOL"
+                    WHERE t."{ts_col}" IS NOT NULL
+                    AND t."OPEN" IS NOT NULL
+                    AND t."HIGH" IS NOT NULL
+                    AND t."LOW"  IS NOT NULL
+                    AND t."CLOSE" IS NOT NULL
+                ),
+                days_ranked AS (
+                    SELECT symbol, day_ts,
+                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY day_ts DESC) AS rn
+                    FROM (SELECT DISTINCT symbol, day_ts FROM base) d
+                ),
+                keep_days AS (
+                    SELECT symbol, day_ts
+                    FROM days_ranked
+                    WHERE rn <= :n_days
+                ),
+                filtered AS (
+                    SELECT b.*
+                    FROM base b
+                    JOIN keep_days k
+                    ON k.symbol = b.symbol AND k.day_ts = b.day_ts
+                ),
+                sym_stats AS (
+                    SELECT
+                        symbol,
+                        MIN(ts) AS min_date,
+                        MAX(ts) AS max_date,
+                        MAX(high) AS highest_value
+                    FROM filtered
+                    GROUP BY symbol
+                ),
+                highest_date AS (
+                    SELECT f.symbol, MIN(f.ts) AS highest_date
+                    FROM filtered f
+                    JOIN sym_stats s
+                    ON s.symbol = f.symbol AND f.high = s.highest_value
+                    GROUP BY f.symbol
+                ),
+                daily_agg AS (
+                    SELECT
+                        symbol,
+                        day_ts,
+                        MIN(ts) AS first_ts,
+                        MAX(ts) AS last_ts,
+                        MIN(low) AS low,
+                        MAX(high) AS high,
+                        SUM(volume) AS volume,
+                        COUNT(*)::int AS bar_count
+                    FROM filtered
+                    GROUP BY symbol, day_ts
+                ),
+                daily_ohlc AS (
+                    SELECT
+                        a.symbol,
+                        a.day_ts,
+                        s.min_date,
+                        s.max_date,
+                        s.highest_value,
+                        h.highest_date,
+                        -- OPEN = value at first_ts
+                        (SELECT f.open FROM filtered f
+                        WHERE f.symbol=a.symbol AND f.day_ts=a.day_ts AND f.ts=a.first_ts
+                        LIMIT 1) AS open,
+                        -- CLOSE = value at last_ts
+                        (SELECT f.close FROM filtered f
+                        WHERE f.symbol=a.symbol AND f.day_ts=a.day_ts AND f.ts=a.last_ts
+                        LIMIT 1) AS close,
+                        a.high,
+                        a.low,
+                        a.volume,
+                        a.bar_count
+                    FROM daily_agg a
+                    JOIN sym_stats s ON s.symbol = a.symbol
+                    JOIN highest_date h ON h.symbol = a.symbol
+                )
+                INSERT INTO {target_schema}."{target_table}" (
+                    "EXCHANGE","SYMBOL","INTERVAL","TIMESTAMP",
+                    "MIN_DATE","MAX_DATE","HIGHEST_VALUE","HIGHEST_DATE",
+                    "OPEN","HIGH","LOW","CLOSE","VOLUME","BAR_COUNT"
+                )
+                SELECT
+                    :exchange AS "EXCHANGE",
+                    d.symbol AS "SYMBOL",
+                    'CONVERTED_DAILY' AS "INTERVAL",
+                    d.day_ts AS "TIMESTAMP",
+                    d.min_date AS "MIN_DATE",
+                    d.max_date AS "MAX_DATE",
+                    d.highest_value AS "HIGHEST_VALUE",
+                    d.highest_date AS "HIGHEST_DATE",
+                    d.open AS "OPEN",
+                    d.high AS "HIGH",
+                    d.low AS "LOW",
+                    d.close AS "CLOSE",
+                    COALESCE(d.volume,0.0) AS "VOLUME",
+                    d.bar_count AS "BAR_COUNT"
+                FROM daily_ohlc d
+                ORDER BY d.symbol, d.day_ts;
+            """)
+
+            params = {"exchange": exchange, "symbols": syms, "n_days": int(start_trading_days_back)}
+
+        else:
+            raise ValueError(f"Unsupported interval: {interval} (use '1min' or 'daily')")
+
+        # Execute insert
+        with self.engine.begin() as conn:
+            conn.execute(q, params)
+
+            after_rows = conn.execute(
+                text(f'SELECT COUNT(*) FROM {target_schema}."{target_table}";')
+            ).scalar_one()
+
+            after_symbols = conn.execute(
+                text(f'SELECT COUNT(DISTINCT "SYMBOL") FROM {target_schema}."{target_table}";')
+            ).scalar_one()
+
+        return {
+            "exchange": exchange,
+            "before_symbols": before_symbols,
+            "after_symbols": int(after_symbols),
+            "after_rows": int(after_rows),
+            "target": f'{target_schema}.{target_table}',
+        }
+    
+    ####################### DATA QUALITY CHECK   ##############################
+    def clear_dq_for_exchange(
+        self,
+        *,
+        schema: str,
+        table: str,
+        exchange: str,
+    ) -> int:
+        """
+        Deletes DQ log rows for a specific exchange only.
+        Returns deleted row count (best-effort).
+        """
+        q = text(f'''
+            DELETE FROM {schema}."{table}"
+            WHERE "EXCHANGE" = :exchange;
+        ''')
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+            # rowcount is supported for DELETE in psycopg
+            return int(res.rowcount or 0)
+
+    def bulk_insert_rows(self, schema: str, table: str, rows: List[Dict[str, Any]]) -> int:
+        """
+        Bulk insert rows using executemany.
+
+        Notes:
+        - If a column is JSONB (e.g., SAMPLE_KEYS), pass it as a JSON string and CAST in SQL.
+        """
+        if not rows:
+            return 0
+
+        cols = list(rows[0].keys())
+
+        # Build column list
+        col_list = ", ".join([f'"{c}"' for c in cols])
+
+        # Build values list with JSONB casting for SAMPLE_KEYS
+        values_sql_parts: List[str] = []
+        for c in cols:
+            if c == "SAMPLE_KEYS":
+                values_sql_parts.append("CAST(:SAMPLE_KEYS AS jsonb)")
+            else:
+                values_sql_parts.append(f":{c}")
+        val_list = ", ".join(values_sql_parts)
+
+        q = text(f'INSERT INTO {schema}."{table}" ({col_list}) VALUES ({val_list});')
+
+        # Normalize JSON-ish values (dict/list) -> JSON string
+        normalized: List[Dict[str, Any]] = []
+        for r in rows:
+            rr = dict(r)
+            if "SAMPLE_KEYS" in rr and rr["SAMPLE_KEYS"] is not None:
+                if isinstance(rr["SAMPLE_KEYS"], (dict, list)):
+                    rr["SAMPLE_KEYS"] = json.dumps(rr["SAMPLE_KEYS"], ensure_ascii=False)
+                else:
+                    # If it's already a string (or jsonb from DB driver), keep as-is
+                    rr["SAMPLE_KEYS"] = str(rr["SAMPLE_KEYS"])
+            normalized.append(rr)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, normalized)
+
+        return len(normalized)
+    
+    def ensure_dq_status_column_on_poc_profile(self) -> None:
+        """
+        Ensures DQ_STATUS column exists on silver.FRVP_FOCUS_SYMBOL_LIST.
+        """
+        q = text("""
+            ALTER TABLE silver."FRVP_FOCUS_SYMBOL_LIST"
+            ADD COLUMN IF NOT EXISTS "DQ_STATUS" TEXT DEFAULT 'PASSED';
+        """)
+        with self.engine.begin() as conn:
+            conn.execute(q)
+
+    def apply_dq_to_poc_profile(self, reset_in_scope: bool = True) -> None:
+        """
+        Applies DQ results from logs.DQ_generic_check to silver.FRVP_FOCUS_SYMBOL_LIST.
+
+        - FAILED symbols:
+            IN_SCOPE_FOR_EMA_RSI = FALSE
+            DQ_STATUS = FAILED_<CHECK_TYPE>|FAILED_<CHECK_TYPE>
+        - PASSED symbols:
+            DQ_STATUS = PASSED
+        """
+
+        self.ensure_dq_status_column_on_poc_profile()
+
+        with self.engine.begin() as conn:
+
+            # Reset DQ_STATUS
+            conn.execute(text("""
+                UPDATE silver."FRVP_FOCUS_SYMBOL_LIST"
+                SET "DQ_STATUS" = 'PASSED';
+            """))
+
+            if reset_in_scope:
+                conn.execute(text("""
+                    UPDATE silver."FRVP_FOCUS_SYMBOL_LIST"
+                    SET "IN_SCOPE" = TRUE;
+                """))
+
+            # Apply FAIL results
+            conn.execute(text("""
+                WITH failed AS (
+                    SELECT
+                        "SYMBOL" AS symbol,
+                        string_agg(
+                            DISTINCT ('FAILED_' || "CHECK_TYPE"),
+                            '|' ORDER BY ('FAILED_' || "CHECK_TYPE")
+                        ) AS dq_status
+                    FROM logs."DQ_generic_check"
+                    WHERE "STATUS" = 'FAIL'
+                    GROUP BY "SYMBOL"
+                )
+                UPDATE silver."FRVP_FOCUS_SYMBOL_LIST" p
+                SET "IN_SCOPE" = FALSE,
+                    "DQ_STATUS" = f.dq_status
+                FROM failed f
+                WHERE p."SYMBOL" = f.symbol;
+            """))
+
+            # ---------------------------------------------------
+            # Stats
+            # ---------------------------------------------------
+
+            failed_count_usa = conn.execute(text("""
+                SELECT COUNT(DISTINCT "SYMBOL")
+                FROM logs."DQ_generic_check"
+                WHERE "STATUS"='FAIL' AND "EXCHANGE"='USA'
+            """)).scalar()
+
+            failed_count_bist = conn.execute(text("""
+                SELECT COUNT(DISTINCT "SYMBOL")
+                FROM logs."DQ_generic_check"
+                WHERE "STATUS"='FAIL' AND "EXCHANGE"='BIST'
+            """)).scalar()
+
+            remaining_scope_usa = conn.execute(text("""
+                SELECT COUNT(DISTINCT "SYMBOL")
+                FROM silver."FRVP_FOCUS_SYMBOL_LIST"
+                WHERE "EXCHANGE"= 'USA' AND "IN_SCOPE" = TRUE
+            """)).scalar()
+
+            remaining_scope_bist = conn.execute(text("""
+                SELECT COUNT(DISTINCT "SYMBOL")
+                FROM silver."FRVP_FOCUS_SYMBOL_LIST"
+                WHERE "EXCHANGE"= 'BIST' AND "IN_SCOPE" = TRUE
+            """)).scalar()
+
+        print(f"[DQ] FAILED SYMBOL COUNT | USA = {failed_count_usa} | BIST = {failed_count_bist}")
+        print(f"[DQ] After excluding failed DQ, USA UNIQUE SYMBOL COUNT = {remaining_scope_usa} | BIST UNIQUE SYMBOL COUNT = {remaining_scope_bist} ")
+
+    ########### EMA CALC CHAPTER #########
+    def get_ema_focus_symbols(self, exchange: str) -> list[str]:
+        q = text("""
+            SELECT DISTINCT "SYMBOL"
+            FROM silver."IND_FRV_POC_PROFILE"
+            WHERE "EXCHANGE" = :exchange
+            AND "IN_SCOPE_FOR_EMA_RSI" = TRUE
+            ORDER BY "SYMBOL";
+        """)
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange}).fetchall()
+        return [r[0] for r in rows]
+    
+
+    def delete_ind_ema_scope(self, exchange: str) -> int:
+        q = text("""
+            DELETE FROM silver."IND_EMA_FOCUS"
+            WHERE "EXCHANGE" = :exchange;
+        """)
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+
+    def fetch_last_n_days_close_for_symbols(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+        symbols: list[str],
+        n_days: int,
+        ts_col: str = "TIMESTAMP",
+        close_col: str = "CLOSE",
+    ) -> list[dict]:
+        if not symbols:
+            return []
+
+        # expanding bind param (IN :symbols) için
+        q = text(f"""
+            WITH ranked AS (
+                SELECT
+                    "EXCHANGE" AS exchange,
+                    "SYMBOL" AS symbol,
+                    "{ts_col}" AS ts,
+                    "{close_col}"::double precision AS close,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY "SYMBOL"
+                        ORDER BY "{ts_col}" DESC
+                    ) AS rn
+                FROM {schema}."{table}"
+                WHERE "EXCHANGE" = :exchange
+                AND "SYMBOL" IN :symbols
+                AND "{ts_col}" IS NOT NULL
+                AND "{close_col}" IS NOT NULL
+            )
+            SELECT exchange, symbol, ts, close
+            FROM ranked
+            WHERE rn <= :n_days
+            ORDER BY symbol ASC, ts ASC;
+        """).bindparams(bindparam("symbols", expanding=True))
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange, "symbols": symbols, "n_days": n_days}).fetchall()
+
+        return [{"EXCHANGE": r[0], "SYMBOL": r[1], "TIMESTAMP": r[2], "CLOSE": r[3]} for r in rows]
+    
+    def insert_ind_ema_focus_rows(self, rows: list[dict]) -> int:
+        if not rows:
+            return 0
+
+        q = text("""
+            INSERT INTO silver."IND_EMA_FOCUS" (
+                "EXCHANGE","SYMBOL","END_DATE",
+                "EMA5","EMA20","EMA_STATUS","EMA_CROSS","DAYS_SINCE_CROSS",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,:SYMBOL,:END_DATE,
+                :EMA5,:EMA20,:EMA_STATUS,:EMA_CROSS,:DAYS_SINCE_CROSS,
+                :CREATED_AT
+            );
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)
+    
+    # delete last n days from table
+    def delete_recent_days_by_last_ts(
+        self,
+        schema: str,
+        table: str,
+        ts_col: str = "TS",
+        days_back: int = 1,
+        ) -> None:
+        """
+        Deletes the latest trading day (or latest N calendar days based on the last TS date)
+        from the given table for all symbols.
+
+        Prints cleanup information.
+        """
+
+        if days_back < 1:
+            raise ValueError("days_back must be >= 1")
+
+        q_max_before = text(f'''
+            SELECT MAX("{ts_col}")
+            FROM {schema}.{table};
+        ''')
+
+        with self.engine.begin() as conn:
+
+            max_ts_before = conn.execute(q_max_before).scalar()
+
+            if max_ts_before is None:
+                print(
+                    f"[CLEANUP] {schema}.{table} | "
+                    f"days_back={days_back} | "
+                    f"table empty"
+                )
+                return
+
+            last_day = max_ts_before.date()
+
+            delete_from = last_day - timedelta(days=days_back - 1)
+            delete_to = last_day + timedelta(days=1)
+
+            q_delete = text(f'''
+                DELETE FROM {schema}.{table}
+                WHERE "{ts_col}" >= :delete_from
+                AND "{ts_col}" < :delete_to
+            ''')
+
+            res = conn.execute(
+                q_delete,
+                {
+                    "delete_from": delete_from,
+                    "delete_to": delete_to,
+                },
+            )
+
+            deleted_rows = res.rowcount
+
+            q_max_after = text(f'''
+                SELECT MAX("{ts_col}")
+                FROM {schema}.{table};
+            ''')
+
+            max_ts_after = conn.execute(q_max_after).scalar()
+
+        print(
+            f"[CLEANUP] {schema}.{table} | "
+            f"days_back={days_back} | "
+            f"last_ts_before={max_ts_before} | "
+            f"last_ts_after={max_ts_after} | "
+            f"deleted_rows={deleted_rows}"
+        )

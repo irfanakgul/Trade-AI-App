@@ -7,9 +7,12 @@ rm -f /tmp/tradeai_*.lock
 .venv/bin/python -u -m app.scheduler.daemon --config app/scheduler/schedule.yaml
 
 ## Printleri takip etmek icin.
-tail -f logs/bist_batch.out.log
-tail -f logs/usa_batch.out.log
+tail -f logs/bist_daily_calc.out.log
 tail -f logs/bist_indicators.out.log
+tail -f logs/bist_batch.out.log
+
+
+tail -f logs/usa_batch.out.log
 tail -f logs/usa_indicators.out.log
 
 
