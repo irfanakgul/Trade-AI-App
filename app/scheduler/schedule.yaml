@@ -6,8 +6,8 @@ jobs:
 
     # daily calculations (raw+working+trim+focus)
   - name: bist_daily_calc
-    run_days: [MON, TUE, WED, THU, FRI]
-    at: "01:29"
+    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
+    at: "01:47"
     cmd: ".venv/bin/python -u main_bist_daily_data.py"
     lock: "bist_daily_calc"
 
@@ -26,7 +26,7 @@ jobs:
     lock: "bist_batch"
 
   - name: usa_batch
-    run_days: [MON, TUE, WED, THU, FRI, SAT]
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
     at: "07:00"
     cmd: ".venv/bin/python -u main_usa_data.py"
     lock: "usa_batch"
@@ -46,7 +46,7 @@ jobs:
     cmd: ".venv/bin/python -u main_backup_trigger.py"
     lock: "backup_to_local_trigger"
 
-    - name: restore_from_backup
+  - name: restore_from_backup
     depends_on: "backup_to_local_trigger"  #"backup_trigger" #open for depends usage
     # run_days: [SUN] #remove if u will use depends on
     # at: "23:32" #remove if u will use depends on
