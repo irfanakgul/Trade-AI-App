@@ -51,6 +51,9 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
 
     # 1) Ingestion (Polygon)
     if flags.ingest:
+        repo.delete_recent_days_by_last_ts(schema='raw',table='usa_1min_archive',ts_col= "TS",days_back = 1)
+        repo.delete_recent_days_by_last_ts(schema='bronze',table='usa_1min_high_filtered',ts_col= "TS",days_back = 1)
+
         usa_provider = PolygonProvider(api_key=os.environ["POLYGON_API_KEY"])
         usa_svc = UsaHistoricalIngestionService(repo=repo, provider=usa_provider)
 

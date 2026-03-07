@@ -76,6 +76,9 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
     # ----------------------------------------------------------
 
     if flags.ingest:
+        repo.delete_recent_days_by_last_ts(schema='raw',table='bist_daily_archive',ts_col= "TS",days_back = 1)
+        repo.delete_recent_days_by_last_ts(schema='bronze',table='bist_daily_high_filtered',ts_col= "TS",days_back = 1)
+
 
         provider = YahooQueryBistDailyProvider()
 

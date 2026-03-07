@@ -45,6 +45,10 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
 
     # 1) Ingestion (yahooquery)
     if flags.ingest:
+        #remove last n days data from raw/bronze tables
+        repo.delete_recent_days_by_last_ts(schema='raw',table='bist_1min_archive',ts_col= "TS",days_back = 1)
+        repo.delete_recent_days_by_last_ts(schema='bronze',table='bist_1min_tv_past',ts_col= "TS",days_back = 1)
+
         bist_primary_provider = YahooQueryBistProvider()
         bist_svc = BistHistoricalIngestionService(repo=repo, provider=bist_primary_provider)
 

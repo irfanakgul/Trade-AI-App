@@ -1506,3 +1506,74 @@ class PostgresRepository:
             conn.execute(q, rows)
 
         return len(rows)
+    
+    # delete last n days from table
+    def delete_recent_days_by_last_ts(
+        self,
+        schema: str,
+        table: str,
+        ts_col: str = "TS",
+        days_back: int = 1,
+        ) -> None:
+        """
+        Deletes the latest trading day (or latest N calendar days based on the last TS date)
+        from the given table for all symbols.
+
+        Prints cleanup information.
+        """
+
+        if days_back < 1:
+            raise ValueError("days_back must be >= 1")
+
+        q_max_before = text(f'''
+            SELECT MAX("{ts_col}")
+            FROM {schema}.{table};
+        ''')
+
+        with self.engine.begin() as conn:
+
+            max_ts_before = conn.execute(q_max_before).scalar()
+
+            if max_ts_before is None:
+                print(
+                    f"[CLEANUP] {schema}.{table} | "
+                    f"days_back={days_back} | "
+                    f"table empty"
+                )
+                return
+
+            last_day = max_ts_before.date()
+
+            delete_from = last_day - timedelta(days=days_back - 1)
+            delete_to = last_day + timedelta(days=1)
+
+            q_delete = text(f'''
+                DELETE FROM {schema}.{table}
+                WHERE "{ts_col}" >= :delete_from
+                AND "{ts_col}" < :delete_to
+            ''')
+
+            res = conn.execute(
+                q_delete,
+                {
+                    "delete_from": delete_from,
+                    "delete_to": delete_to,
+                },
+            )
+
+            deleted_rows = res.rowcount
+
+            q_max_after = text(f'''
+                SELECT MAX("{ts_col}")
+                FROM {schema}.{table};
+            ''')
+
+            max_ts_after = conn.execute(q_max_after).scalar()
+
+        print(
+            f"[CLEANUP] {schema}.{table} | "
+            f"days_back={days_back} | "
+            f"last_ts_before={max_ts_before} | "
+            f"last_ts_after={max_ts_after} | "
+            f"deleted_rows={deleted_rows}"
+        )
