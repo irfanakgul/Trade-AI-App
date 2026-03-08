@@ -30,13 +30,17 @@ from app.services.bist_daily_historical_fallback_service import (
 @dataclass(frozen=True)
 class BistDailyDataPipelineFlags:
 
-    ingest: bool = True
-    fallback: bool = True
-    sync_archive_to_working: bool = True
-    trim365: bool = True
-    build_focus_dataset: bool = True
+    ingest: bool = False
+    fallback: bool = False
 
-    use_db_last_timestamp: bool = True
+    sync_archive_to_working: bool = True
+    interval: str = 'daily'
+    sync_start_date: str = ''
+    trim365: bool = False
+
+    build_focus_dataset: bool = False
+
+    use_db_last_timestamp: bool = False
     start_date: str = "2020-01-01"
     end_date: Optional[str] = None
 
@@ -156,6 +160,8 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
             working_table=flags.working_table,
             ts_col=flags.ts_col,
             safety_days=flags.safety_days,
+            interval="daily",
+            sync_start_date="2024-03-05", # if daily, then truncate and take data from start_date
         )
 
         print(

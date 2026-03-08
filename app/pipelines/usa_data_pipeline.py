@@ -24,6 +24,8 @@ class UsaDataPipelineFlags:
     fallback_twelvedata: bool = True
     fallback_yahoo: bool = True
     sync_archive_to_working: bool = True
+    interval: str = ''
+    sync_start_date: str = None  
     trim365: bool = True
     build_focus_dataset: bool = True
     dq: bool = True
@@ -125,22 +127,24 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
     )
     # 4) Sync raw -> bronze working
     if flags.sync_archive_to_working:
-        print("\n[USA] Sync archive -> working started...\n")
+        print("\n[USA-SYNC] Sync archive -> working started...\n")
         ins_usa = repo.sync_archive_to_working(
             archive_schema="raw",
             archive_table="usa_1min_archive",
             working_schema="bronze",
             working_table="usa_1min_high_filtered",
+            sync_start_date= None,
+            interval='1min',
             ts_col="TS",
             safety_days=flags.safety_days,
         )
-        print(f"[USA] Sync completed. inserted_rows={ins_usa}\n")
+        print(f"[USA-SYNC] Sync completed. inserted_rows={ins_usa}\n")
     else:
-        print("[USA] sync skipped")
+        print("[USA-SYNC] sync skipped")
 
     print(
-        f"[USA] date cloned into bronze from raw "
-        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}"
+        f"[USA-SYNC] Data cloned into bronze from raw "
+        f"|RT: {datetime.now().strftime('%d-%m-%Y %H:%M')}"
     )
     # 5) Trim
     if flags.trim365:

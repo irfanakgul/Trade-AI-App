@@ -19,7 +19,9 @@ async def main():
         fallback_twelvedata=True,
         fallback_yahoo=True,
         sync_archive_to_working=True,
-        trim365=True,
+        interval = '1min',
+        sync_start_date = None, # only for daily data
+        trim365=False,
         build_focus_dataset=True, # prep focus symbols and datasets for all indicators
         dq = True,
         apply_dq_out_scope = True # dq failed symbols will be out of scope for ema and further.False include, True exclude

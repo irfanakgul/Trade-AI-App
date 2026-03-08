@@ -750,7 +750,7 @@ class PostgresRepository:
             r = conn.execute(q, {"symbol": symbol}).scalar()
         return r
     
-    # raw data handling
+    # sync to bronze from raw. but if daily, then truncate and take last 2years. 
     def sync_archive_to_working(
         self,
         archive_schema: str,
@@ -759,19 +759,39 @@ class PostgresRepository:
         working_table: str,
         ts_col: str = "TS",
         safety_days: int = 1,
+        interval: str = "",
+        sync_start_date: str | None = None, #format: "2024-03-05"
     ) -> int:
         """
-        Append-only sync: moves only recent/new rows from archive into working using ON CONFLICT DO NOTHING.
-        Uses working MAX(TS) as watermark and subtracts safety_days to avoid missing edge minutes.
+        Sync archive data into working table.
+
+        Modes
+        -----
+        interval = "1min":
+            Append-only sync. Uses working MAX(TS) as watermark and subtracts safety_days
+            to avoid missing edge minutes. Inserts with ON CONFLICT DO NOTHING.
+
+        interval = "daily":
+            Full refresh for working table. Truncates working table first, then reloads data
+            from archive where TS >= sync_start_date 00:00:00.
         """
+        interval = interval.strip().lower()
+
+        if interval not in {"1min", "daily"}:
+            raise ValueError("interval must be either '1min' or 'daily'")
+
         cols = '"SYMBOL","TIMESTAMP","TS","OPEN","HIGH","LOW","CLOSE","VOLUME","SOURCE","ROW_ID"'
 
-        get_max = text(f"""
+        get_max_q = text(f"""
             SELECT MAX("{ts_col}") AS max_ts
             FROM {working_schema}.{working_table};
         """)
 
-        insert_q = text(f"""
+        truncate_q = text(f"""
+            TRUNCATE TABLE {working_schema}.{working_table};
+        """)
+
+        insert_incremental_q = text(f"""
             INSERT INTO {working_schema}.{working_table} ({cols})
             SELECT {cols}
             FROM {archive_schema}.{archive_table} a
@@ -779,15 +799,36 @@ class PostgresRepository:
             ON CONFLICT ("ROW_ID") DO NOTHING;
         """)
 
+        insert_full_refresh_q = text(f"""
+            INSERT INTO {working_schema}.{working_table} ({cols})
+            SELECT {cols}
+            FROM {archive_schema}.{archive_table} a
+            WHERE a."{ts_col}" >= :from_ts;
+        """)
+
         with self.engine.begin() as conn:
-            max_ts = conn.execute(get_max).scalar()
+            if interval == "1min":
+                max_ts = conn.execute(get_max_q).scalar()
 
-            if max_ts is None:
-                from_ts = datetime(1900, 1, 1)
-            else:
-                from_ts = (max_ts - timedelta(days=safety_days))
+                if max_ts is None:
+                    from_ts = datetime(1900, 1, 1)
+                else:
+                    from_ts = max_ts - timedelta(days=safety_days)
 
-            res = conn.execute(insert_q, {"from_ts": from_ts})
+                res = conn.execute(insert_incremental_q, {"from_ts": from_ts})
+                return int(res.rowcount or 0)
+
+            # interval == "daily"
+            if not sync_start_date:
+                raise ValueError("sync_start_date must be provided when interval='daily'")
+
+            try:
+                from_ts = datetime.strptime(sync_start_date, "%Y-%m-%d")
+            except ValueError as exc:
+                raise ValueError("sync_start_date must be in 'YYYY-MM-DD' format") from exc
+
+            conn.execute(truncate_q)
+            res = conn.execute(insert_full_refresh_q, {"from_ts": from_ts})
             return int(res.rowcount or 0)
     
     def get_high_at_ts(

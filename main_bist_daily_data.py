@@ -19,6 +19,8 @@ async def main():
         ingest=True,
         fallback=True,
         sync_archive_to_working=True,
+        interval="daily",
+        sync_start_date="2024-03-05", # if daily, then truncate and take data from start_date
         trim365=True,
         build_focus_dataset=True,
         use_db_last_timestamp=True,
