@@ -35,13 +35,13 @@ class BistDailyDataPipelineFlags:
 
     sync_archive_to_working: bool = True
     interval: str = 'daily'
-    sync_start_date: str = ''
+    sync_start_date: str = "2024-03-05"
     trim365: bool = False
 
     build_focus_dataset: bool = False
 
     use_db_last_timestamp: bool = False
-    start_date: str = "2020-01-01"
+    start_date: str = "2026-01-01"
     end_date: Optional[str] = None
 
     archive_schema: str = "raw"
@@ -64,11 +64,21 @@ class BistDailyDataPipelineFlags:
     dq: bool = True
     apply_dq_out_scope: bool = True # dq failed symbols will be out of scope for ema and further.False include, True exclude
 
+    # auto sample flags
+    auto_sample_run: bool = True
+    smpl_source_schema: str ="silver"
+    smpl_source_table: str ="FRVP_BIST_FOCUS_DATASET"
+    smpl_target_schema: str ="test"
+    smpl_target_table: str ="sample_bist_daily"
+    smpl_symbol_col:str = "SYMBOL"
+    smpl_ts_col:str = "TS"
+    smpl_trading_days_back:int = 30
+
 
 async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDailyDataPipelineFlags):
 
     print(
-        "\n[BIST-DAILY] pipeline started... "
+        "\n[BIST-DAILY-PULL] pipeline started... "
         + datetime.now().strftime("%d-%m-%Y %H:%M")
         + "\n"
     )
@@ -100,7 +110,7 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
         failed_symbols = getattr(svc, "permanently_failed_symbols", [])
 
     else:
-        print("[BIST-DAILY] ingestion skipped")
+        print("⏭️[BIST-DAILY-PULL] ingestion skipped")
 
     # ----------------------------------------------------------
     # 2) FALLBACK (tvDatafeed)
@@ -109,7 +119,7 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
     if flags.fallback and failed_symbols:
 
         print(
-            f"\n[BIST-DAILY-FB] tvDatafeed fallback started. "
+            f"\n[BIST-DAILY-PULL-FB] tvDatafeed fallback started. "
             f"failed_symbols={len(failed_symbols)}\n"
         )
 
@@ -132,18 +142,25 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
             end_date=flags.end_date,
         )
 
-        print("\n[BIST-DAILY-FB] fallback completed\n")
-
-    elif flags.fallback:
-        print("[BIST-DAILY-FB] fallback skipped (no failed symbols)")
-    else:
-        print("[BIST-DAILY-FB] fallback disabled")
-
-    print(
-        "\n[BIST-DAILY] archive update completed.. "
+        print("\n[BIST-DAILY-PULL-FB] fallback completed\n")
+        print(
+        "\n[BIST-DAILY-PULL] archive update completed. "
         + datetime.now().strftime("%d-%m-%Y %H:%M")
         + "\n"
     )
+
+    elif flags.fallback:
+        print("[BIST-DAILY-PULL-FB] fallback skipped because no failed symbols")
+        print(
+        "\n[BIST-DAILY-PULL] archive update completed.. "
+        + datetime.now().strftime("%d-%m-%Y %H:%M")
+        + "\n"
+    )
+    else:
+        print("⏭️[BIST-DAILY-PULL-FB] fallback skipped!")
+
+
+    
 
     # ----------------------------------------------------------
     # 3) SYNC raw → bronze
@@ -151,7 +168,7 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
 
     if flags.sync_archive_to_working:
 
-        print("\n[BIST-DAILY] Sync archive -> working started...\n")
+        print("\n[BIST-DAILY-SYNC] Sync archive -> working started...\n")
 
         inserted = repo.sync_archive_to_working(
             archive_schema=flags.archive_schema,
@@ -165,12 +182,12 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
         )
 
         print(
-            f"[BIST-DAILY] Sync completed. inserted_rows={inserted} "
+            f"[BIST-DAILY-SYNC] Sync completed. inserted_rows={inserted} "
             f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
         )
 
     else:
-        print("[BIST-DAILY] sync skipped")
+        print("⏭️[BIST-DAILY-SYNC] sync skipped")
 
     # ----------------------------------------------------------
     # 4) TRIM
@@ -183,7 +200,7 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
             table=flags.working_table,
         )
 
-        print(f"[BIST-DAILY] rows before trim: {before}")
+        print(f"[BIST-DAILY-TRIM365] rows before trim: {before}")
 
         deleted = repo.trim_history_by_peak_or_lookback_ts(
             schema=flags.working_schema,
@@ -200,11 +217,11 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
             table=flags.working_table,
         )
 
-        print(f"[BIST-DAILY] trim completed. deleted_rows={deleted}")
-        print(f"[BIST-DAILY] rows after trim: {after}")
+        print(f"[BIST-DAILY-TRIM365] trim completed. deleted_rows={deleted}")
+        print(f"[BIST-DAILY-TRIM365] rows after trim: {after}")
 
     else:
-        print("[BIST-DAILY] trim skipped")
+        print("⏭️[BIST-DAILY-TRIM365] trim skipped")
 
     # ----------------------------------------------------------
     # 5) BUILD FOCUS DATASET
@@ -224,20 +241,43 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
         )
 
         print(
-            f'[BIST-DAILY] Focus dataset built. '
+            f'[BIST-DAILY-FOCUS] Focus dataset built. '
             f'symbols: {stats["before_symbols"]} -> {stats["after_symbols"]}, '
             f'rows: {stats["before_rows"]} -> {stats["after_rows"]} '
             f'{datetime.now().strftime("%d-%m-%Y %H:%M")}'
         )
 
     else:
-        print("[BIST-DAILY] focus dataset build skipped")
+        print("⏭️ [BIST-DAILY-FOCUS] focus dataset build skipped")
 
-    print(
-        f"\n[BIST-DAILY] pipeline finished. "
-        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
-    )
+    
 
+    # ----------------------------------------------------------
+    # 6) SAMPLE AUTO DATASET
+    # ----------------------------------------------------------
+
+    if flags.auto_sample_run:
+        symbols = os.getenv("BIST_SAMPLE_SYMBOLS", "")
+        symbols = [s.strip() for s in symbols.split(",") if s.strip()]
+        print(f'[SAMPLE-BIST-DAILY] | Sample symbols {len(symbols)} > {symbols}')
+
+        repo.rebuild_symbol_sample_dataset(
+            source_schema=flags.focus_schema,
+            source_table=flags.focus_table,
+            target_schema=flags.smpl_target_schema,
+            target_table=flags.smpl_target_table,
+            symbols=symbols,
+            symbol_col=flags.smpl_symbol_col,
+            ts_col=flags.smpl_ts_col,
+            trading_days_back=flags.smpl_trading_days_back,
+        )
+    else: 
+        print(f'⏭️[SAMPLE-BIST-DAILY] SKIPPED!')
+    
+    
+    # ----------------------------------------------------------
+    # 7) DQ CHECKS
+    # ----------------------------------------------------------
     if flags.dq:
         run_id = uuid.uuid4()
         
@@ -263,3 +303,5 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
         
         if flags.apply_dq_out_scope:
             repo.apply_dq_to_poc_profile(reset_in_scope=True)  # or False if you don't want to reset IN_SCOPE  # or False if you don't want to reset IN_SCOPE
+    else:
+        print(f'⏭️ [DQ - BIST] | Skipped!')

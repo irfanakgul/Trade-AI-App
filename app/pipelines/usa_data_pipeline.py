@@ -44,6 +44,15 @@ class UsaDataPipelineFlags:
     err_table: str = "ingestion_errors"
     job_name: str = "usa_historical_ingestion"
 
+    # auto sample flags
+    auto_sample_run: bool = True
+    smpl_source_schema: str ="silver"
+    smpl_source_table: str ="FRVP_USA_FOCUS_DATASET"
+    smpl_target_schema: str ="test"
+    smpl_target_table: str ="sample_usa_1min"
+    smpl_symbol_col:str = "SYMBOL"
+    smpl_ts_col:str = "TS"
+    smpl_trading_days_back:int = 30
 
 async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipelineFlags) -> None:
     print(
@@ -204,7 +213,31 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
         f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
     )
 
+    # ----------------------------------------------------------
+    # 6) SAMPLE AUTO DATASET
+    # ----------------------------------------------------------
 
+    if flags.auto_sample_run:
+        symbols = os.getenv("USA_SAMPLE_SYMBOLS", "")
+        symbols = [s.strip() for s in symbols.split(",") if s.strip()]
+        print(f'[SAMPLE-USA-1MIN] | Sample symbols {len(symbols)} > {symbols}')
+
+        repo.rebuild_symbol_sample_dataset(
+            source_schema=flags.smpl_source_schema,
+            source_table=flags.smpl_source_table,
+            target_schema=flags.smpl_target_schema,
+            target_table=flags.smpl_target_table,
+            symbols=symbols,
+            symbol_col=flags.smpl_symbol_col,
+            ts_col=flags.smpl_ts_col,
+            trading_days_back=flags.smpl_trading_days_back,
+        )
+    else: 
+        print(f'⏭️[SAMPLE-USA-1MIN] SKIPPED!')
+
+    # ----------------------------------------------------------
+    # 7) DQ CHECKS
+    # ----------------------------------------------------------
     if flags.dq:
         run_id = uuid.uuid4()
         deleted = repo.clear_dq_for_exchange(schema="logs", table="DQ_generic_check", exchange="USA")

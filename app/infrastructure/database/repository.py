@@ -8,6 +8,9 @@ from sqlalchemy import text,bindparam
 from sqlalchemy.engine import Engine
 from datetime import datetime,timezone,timedelta
 import json
+import pandas as pd
+from google.gg_read_write_update_func import fn_write_to_google
+
 
 @dataclass(frozen=True)
 class InScopeSymbol:
@@ -1618,3 +1621,204 @@ class PostgresRepository:
             f"last_ts_after={max_ts_after} | "
             f"deleted_rows={deleted_rows}"
         )
+
+    def rebuild_symbol_sample_dataset(
+        self,
+        source_schema: str,
+        source_table: str,
+        target_schema: str,
+        target_table: str,
+        symbols: Sequence[str],
+        symbol_col: str = "SYMBOL",
+        ts_col: str = "TS",
+        trading_days_back: int = 30,
+        truncate_target: bool = True,
+    ) -> dict:
+        """
+        Rebuilds a sample dataset for the given symbols by taking the last N trading days
+        per symbol from the source table and writing them into the target table.
+
+        Assumptions:
+        - source and target tables have the same column structure
+        - ts_col is a typed timestamp column (recommended: TS)
+        - trading day is calculated as DISTINCT ts_col::date per symbol
+
+        Behavior:
+        - Optionally truncates target table before insert
+        - Rebuilds the dataset from scratch on every run
+
+        Returns simple stats.
+        """
+
+        if trading_days_back < 1:
+            raise ValueError("trading_days_back must be >= 1")
+
+        def _is_safe_ident(x: str) -> bool:
+            return x.replace("_", "").isalnum()
+
+        for ident in (source_schema, source_table, target_schema, target_table, symbol_col, ts_col):
+            if not _is_safe_ident(ident):
+                raise ValueError(f"Unsafe identifier: {ident}")
+
+        source_fqn = f'"{source_schema}"."{source_table}"'
+        target_fqn = f'"{target_schema}"."{target_table}"'
+
+        # Empty symbol list => just truncate target and exit
+        if not symbols:
+            with self.engine.begin() as conn:
+                if truncate_target:
+                    conn.execute(text(f"TRUNCATE TABLE {target_fqn};"))
+            print(
+                f"[SAMPLE] {target_fqn} rebuilt with 0 symbols | "
+                f"source={source_fqn} | trading_days_back={trading_days_back} | inserted_rows=0"
+            )
+            return {
+                "source": source_fqn,
+                "target": target_fqn,
+                "symbols_requested": 0,
+                "symbols_inserted": 0,
+                "inserted_rows": 0,
+                "trading_days_back": trading_days_back,
+            }
+
+        q_before = text(f'''
+            SELECT COUNT(*)::bigint AS rows
+            FROM {target_fqn};
+        ''')
+
+        q_truncate = text(f"TRUNCATE TABLE {target_fqn};")
+
+        q_insert = text(f"""
+            WITH symbol_dates AS (
+                SELECT
+                    "{symbol_col}" AS symbol,
+                    ("{ts_col}")::date AS trade_date
+                FROM {source_fqn}
+                WHERE "{symbol_col}" IN :symbols
+                AND "{ts_col}" IS NOT NULL
+                GROUP BY "{symbol_col}", ("{ts_col}")::date
+            ),
+            ranked_dates AS (
+                SELECT
+                    symbol,
+                    trade_date,
+                    DENSE_RANK() OVER (
+                        PARTITION BY symbol
+                        ORDER BY trade_date DESC
+                    ) AS rn
+                FROM symbol_dates
+            ),
+            eligible_ranges AS (
+                SELECT
+                    symbol,
+                    MIN(trade_date) AS keep_from_date,
+                    MAX(trade_date) AS keep_to_date
+                FROM ranked_dates
+                WHERE rn <= :trading_days_back
+                GROUP BY symbol
+            )
+            INSERT INTO {target_fqn}
+            SELECT s.*
+            FROM {source_fqn} s
+            JOIN eligible_ranges r
+            ON s."{symbol_col}" = r.symbol
+            WHERE (s."{ts_col}")::date >= r.keep_from_date
+            AND (s."{ts_col}")::date <= r.keep_to_date
+            ORDER BY s."{symbol_col}", s."{ts_col}";
+        """).bindparams(bindparam("symbols", expanding=True))
+
+        q_after = text(f'''
+            SELECT
+                COUNT(*)::bigint AS rows,
+                COUNT(DISTINCT "{symbol_col}")::bigint AS symbols
+            FROM {target_fqn};
+        ''')
+
+        with self.engine.begin() as conn:
+            before_rows = conn.execute(q_before).scalar()
+
+            if truncate_target:
+                conn.execute(q_truncate)
+
+            res = conn.execute(
+                q_insert,
+                {
+                    "symbols": list(symbols),
+                    "trading_days_back": trading_days_back,
+                },
+            )
+
+            inserted_rows = int(res.rowcount) if res.rowcount is not None and res.rowcount >= 0 else 0
+            after = conn.execute(q_after).mappings().one()
+
+        print(
+            f"[SAMPLE] {target_fqn} rebuilt | "
+            f"source={source_fqn} | "
+            f"symbols_requested={len(symbols)} | "
+            f"symbols_inserted={int(after['symbols'])} | "
+            f"trading_days_back={trading_days_back} | "
+            f"rows_before={int(before_rows)} | "
+            f"rows_after={int(after['rows'])} | "
+            f"inserted_rows={inserted_rows}"
+        )
+
+    def fn_repo_write_to_google(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+        scope_col: str,
+        cols: list[str] | None = None,
+        sheet_name: str = "",
+        replace_append: str = ''
+    ):
+        """
+        Generic table reader.
+
+        Parameters
+        ----------
+        schema : str
+            Schema name
+        table : str
+            Table name
+        exchange : str
+            Exchange filter value
+        scope_col : str
+            Boolean scope column name
+        cols : list[str] | None
+            Column list. If empty or None -> SELECT *
+        write_to_google : bool
+            If True, writes result dataframe to Google Sheets
+        sheet_name : str
+            Target Google Sheet tab name
+
+        Returns
+        -------
+        pandas.DataFrame
+        """
+
+        if cols and len(cols) > 0:
+            col_list = ", ".join([f'"{c}"' for c in cols])
+        else:
+            col_list = "*"
+
+        query = text(f"""
+            SELECT {col_list}
+            FROM "{schema}"."{table}"
+            WHERE "{scope_col}" = TRUE
+            AND "EXCHANGE" = :exchange
+        """)
+
+        with self.engine.connect() as conn:
+            df = pd.read_sql_query(query, conn, params={"exchange": exchange})
+
+        if not sheet_name:
+            raise ValueError("sheet_name must be provided when write_to_google=True")
+
+        fn_write_to_google(
+            df=df,
+            sheet_name=sheet_name,
+            replace_or_append=replace_append
+        )
+
+        print(f'[WRITE_GOOGLE] -{table}- has been saved into google sheets | {replace_append}')

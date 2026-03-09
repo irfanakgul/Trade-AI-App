@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -69,6 +69,8 @@ class IndicatorsFlags:
     # Son kaç trading day kullanılacağını belirler.
     # Örn: 30 → son 30 işlem günü kullanılır.
 
+    auto_sample_run: bool = True # generate sample data on converted 1min dataset
+
     #ema flags
     ema_calc: bool = True
     ema_input_schema: str = ''
@@ -76,6 +78,8 @@ class IndicatorsFlags:
     ema_exchange: str = ''
     ema_lookback_days: int = 20 #default 20 day
     ema_is_truncate_scope: bool = True
+
+
 
 
 def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: IndicatorsFlags) -> None:
@@ -91,7 +95,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         svc = IndFrvPocProfileService(repo=repo)
 
         print(
-            f"\n[IND] FRVP POC/VAL/VAH started ({exchange})... "
+            f"\n[IND-FRVP]  FRVP/POC/VAL/VAH started ({exchange})... "
             f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
         )
         svc.run(
@@ -101,12 +105,28 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
             is_truncate_scope=flags.truncate_scope,
         )
         print(
-            f"\n[IND] FRVP POC/VAL/VAH ended ({exchange})... "
+            f"\n[IND-FRVP] FRVP POC/VAL/VAH ended ({exchange})... "
             f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
         )
-    else:
-        print(f"[IND] FRVP skipped for exchange={exchange}")
 
+        #save result into google sheet 
+        if flags.ema_exchange == 'BIST':
+            sheet_name = "FRVP_BIST"
+        elif flags.ema_exchange == 'USA':
+            sheet_name = "FRVP_USA"
+
+        
+        repo.fn_repo_write_to_google(schema='silver',
+            table='IND_FRV_POC_PROFILE',
+            exchange=flags.ema_exchange,
+            scope_col='IN_SCOPE_FOR_EMA_RSI',
+            cols=None,
+            sheet_name= sheet_name,
+            replace_append = 'replace')
+    else:
+        print(f"⏭️[IND-FRVP] skipped for exchange={exchange}")
+    
+    
     # ----------------------------------------------------------
     # 2) Build "converted daily" dataset (optional)
     # ----------------------------------------------------------
@@ -118,7 +138,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
             )
 
         print(
-            f"[IND] Converted-daily building... exchange={exchange} "
+            f"[IND-CONVERT] Converted-daily building... exchange={exchange} "
             f"source={flags.converted_daily_input_schema}.{flags.converted_daily_input_table} "
             f"interval={flags.converted_daily_input_interval} "
             f"days_back={flags.converted_daily_start_trading_days_back}",
@@ -136,15 +156,37 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
             target_schema=flags.converted_daily_output_schema,
             target_table=flags.converted_daily_output_table,
         )
-
         print(
-            f'[IND] Converted-daily built. exchange={stats["exchange"]} '
+            f'[IND-CONVERT] Converted-daily built. exchange={stats["exchange"]} '
             f'symbols: {stats["before_symbols"]} -> {stats["after_symbols"]}, '
             f'rows={stats["after_rows"]} target={stats["target"]}',
             flush=True
         )
     else:
-        print(f"[IND] Converted-daily step skipped for exchange={exchange}", flush=True)
+        print(f"⏭️[IND-CONVERT] Converted-daily step skipped for exchange={exchange}", flush=True)
+
+    if flags.auto_sample_run:
+        if flags.ema_exchange == 'USA':  # takes ema exchange
+            symbols = os.getenv("USA_SAMPLE_SYMBOLS", "")
+            symbols = [s.strip() for s in symbols.split(",") if s.strip()]
+            print(f'[SAMPLE-USA-1MIN-CONVERTED] | Sample symbols {len(symbols)} > {symbols}')
+
+            repo.rebuild_symbol_sample_dataset(
+                source_schema=flags.converted_daily_output_schema,
+                source_table=flags.converted_daily_output_table,
+                target_schema='test',
+                target_table='sample_usa_daily_converted',
+                symbols=symbols,
+                symbol_col='SYMBOL',
+                ts_col='TIMESTAMP',
+                trading_days_back=30,
+            )
+        else:
+            print(f'⏭️[SAMPLE-BIST-CONVERTED-1MIN] No data for BIST 1min converted yet! For now, only for USA')
+
+    else:
+            print(f'⏭️[SAMPLE-USA-CONVERTED-1MIN] SKIPPED!')
+
 
     # ----------------------------------------------------------
     # 3) EMA CALC CHAPTER
@@ -159,5 +201,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
             lookback_days=flags.ema_lookback_days,          # parametrik
             is_truncate_scope=flags.ema_is_truncate_scope,    # exchange bazlı delete
         )
+    else:
+        print('⏭️[EMA] skipped!')
 
 
