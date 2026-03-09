@@ -234,5 +234,6 @@ spark-warehouse/
 
 # blocal db backup files
 app/backup/data/
+google/tokens/
 
 ./

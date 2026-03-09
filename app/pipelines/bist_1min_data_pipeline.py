@@ -24,13 +24,23 @@ class BistDataPipelineFlags:
     apply_dq_out_scope: bool = False # dq failed symbols will be out of scope for ema and further.False include, True exclude
 
     use_db_last_timestamp: bool = True
-    start_date: str = "2024-03-01"
+    start_date: str = "2025-02-01"
     end_date: Optional[str] = None
 
     safety_days: int = 1
     lookback_days: int = 365
     reference_days_ago: int = 1
     min_trading_days: int = 15
+
+    #auto sample flags
+    auto_sample_run: bool = True
+    smpl_source_schema: str ="raw"
+    smpl_source_table: str ="bist_1min_archive"
+    smpl_target_schema: str ="test"
+    smpl_target_table: str ="sample_bist_1min"
+    smpl_symbol_col:str = "SYMBOL"
+    smpl_ts_col:str = "TS"
+    smpl_trading_days_back:int = 30
 
 
 async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipelineFlags) -> None:
@@ -82,16 +92,24 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
         )
 
         print("\n[BIST-FB] fallback completed\n")
+        print(
+            "\n[BIST] Data update completed.. "
+            + datetime.now().strftime("%d-%m-%Y %H:%M")
+            + "\n")
     elif flags.fallback:
         print("[BIST-FB] fallback skipped (no failed symbols)")
+        print(
+            "\n[BIST] Data update completed.. "
+            + datetime.now().strftime("%d-%m-%Y %H:%M")
+            + "\n")
     else:
         print("[BIST-FB] fallback disabled")
+        print(
+            "\n[BIST] Data update completed.. "
+            + datetime.now().strftime("%d-%m-%Y %H:%M")
+            + "\n")
 
-    print(
-    "\n[BIST] Data update completed.. "
-    + datetime.now().strftime("%d-%m-%Y %H:%M")
-    + "\n"
-    )
+    
 
     # 3) Sync raw -> bronze working
     if flags.sync_archive_to_working:
@@ -161,8 +179,32 @@ async def run_bist_data_pipeline(repo: PostgresRepository, flags: BistDataPipeli
         f"\n[BIST] Data pipeline finished. "
         f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
     )
+    # ----------------------------------------------------------
+    # 6) SAMPLE AUTO DATASET
+    # ----------------------------------------------------------
+
+    if flags.auto_sample_run:
+        symbols = os.getenv("BIST_SAMPLE_SYMBOLS", "")
+        symbols = [s.strip() for s in symbols.split(",") if s.strip()]
+        print(f'[SAMPLE-BIST-1min] | Sample symbols {len(symbols)} > {symbols}')
+
+        repo.rebuild_symbol_sample_dataset(
+            source_schema=flags.smpl_source_schema,
+            source_table=flags.smpl_source_table,
+            target_schema=flags.smpl_target_schema,
+            target_table=flags.smpl_target_table,
+            symbols=symbols,
+            symbol_col=flags.smpl_symbol_col,
+            ts_col=flags.smpl_ts_col,
+            trading_days_back=flags.smpl_trading_days_back,
+        )
+    else: 
+        print(f'⏭️[SAMPLE-BIST-1min] SKIPPED!')
 
 
+    # ----------------------------------------------------------
+    # 7) DQ CHECKS
+    # ----------------------------------------------------------
     if flags.dq:
         run_id = uuid.uuid4()
         deleted = repo.clear_dq_for_exchange(schema="logs", table="DQ_generic_check", exchange="BIST")

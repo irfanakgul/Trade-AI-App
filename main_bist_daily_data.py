@@ -22,10 +22,8 @@ async def main():
         trim365=True,
         build_focus_dataset=True,
         use_db_last_timestamp=True,
-        start_date="2026-02-01", #if use_db_last_timestamp = False
-        end_date=None,
+        auto_sample_run = True,
         dq = True,
-        apply_dq_out_scope = True # dq failed symbols will be out of scope for ema and further.False include, True exclude
     )
 
     await run_bist_daily_data_pipeline(repo, flags)
