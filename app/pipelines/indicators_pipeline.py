@@ -7,7 +7,7 @@ from typing import List, Optional
 from app.infrastructure.database.repository import PostgresRepository
 from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
 from app.services.ind_ema_focus_service import IndEmaFocusService
-from app.services.ind_vwap_focus_service import IndVwapFocusService
+from app.services.ind_vwap_focus_service import IndVwapFocusService # type: ignore
 from app.services.email_service import send_email
 
 
