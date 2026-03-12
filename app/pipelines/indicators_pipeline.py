@@ -7,11 +7,14 @@ from typing import List, Optional
 from app.infrastructure.database.repository import PostgresRepository
 from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
 from app.services.ind_ema_focus_service import IndEmaFocusService
+from app.services.ind_vwap_focus_service import IndVwapFocusService
+from app.services.email_service import send_email
 
 
 
 @dataclass(frozen=True)
 class IndicatorsFlags:
+
     # --------------------------------------------------
     # FRVP indicator calculation
     # --------------------------------------------------
@@ -24,7 +27,8 @@ class IndicatorsFlags:
     # True → tabloyu truncate edip yeniden üretir
     # False → mevcut veriyi bırakır (genelde test için)
 
-    periods: List[str] = None
+    periods: List[str] = ''  
+    #check below in func
     # FRVP hesaplamasında kullanılacak period listesi.
     # Örn: ["2year", "1year", "6months", "4months"]
 
@@ -37,12 +41,12 @@ class IndicatorsFlags:
     # --------------------------------------------------
     # Converted Daily dataset (EMA / RSI input dataset)
     # --------------------------------------------------
-    build_converted_daily: bool = False
+    build_converted_daily: bool = True
     # True → dakikalık veya günlük dataset'i
     # EMA/RSI hesaplamaları için günlük formata dönüştürür.
 
 
-    converted_daily_input_schema: str = "silver"
+    converted_daily_input_schema: str = ""
     # Kaynak dataset'in bulunduğu schema.
 
     converted_daily_input_table: str = ""
@@ -56,7 +60,7 @@ class IndicatorsFlags:
     # "1min"  → dakikalık veri
     # "daily" → zaten günlük veri
 
-    converted_daily_output_schema: str = "silver"
+    converted_daily_output_schema: str = ""
     # Üretilecek converted daily dataset'in schema'sı.
 
     converted_daily_output_table: str = ""
@@ -65,7 +69,7 @@ class IndicatorsFlags:
     # usa_focus_2e_indicators_converted_daily
     # bist_focus_2e_indicators_converted_daily
 
-    converted_daily_start_trading_days_back: int = 30
+    converted_daily_start_trading_days_back: int = 150
     # Son kaç trading day kullanılacağını belirler.
     # Örn: 30 → son 30 işlem günü kullanılır.
 
@@ -75,9 +79,16 @@ class IndicatorsFlags:
     ema_calc: bool = True
     ema_input_schema: str = ''
     ema_input_table: str = ''
-    ema_exchange: str = ''
     ema_lookback_days: int = 20 #default 20 day
     ema_is_truncate_scope: bool = True
+
+    #VWAP falgs
+    build_vwap_focus: bool = True
+    vwap_source_schema: str = "silver"
+    vwap_source_table: str = ""
+    vwap_target_schema: str = "silver"
+    vwap_target_table: str = "IND_VWAP_FOCUS"
+    vwap_lookback_month: int = 4
 
 
 
@@ -100,7 +111,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         )
         svc.run(
             exchange=exchange,
-            periods=periods,
+            periods=["2year", "1year", "6months", "4months"],
             cutt_off_date=flags.cutt_off_date,
             is_truncate_scope=flags.truncate_scope,
         )
@@ -110,15 +121,15 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         )
 
         #save result into google sheet 
-        if flags.ema_exchange == 'BIST':
+        if exchange == 'BIST':
             sheet_name = "FRVP_BIST"
-        elif flags.ema_exchange == 'USA':
+        elif exchange == 'USA':
             sheet_name = "FRVP_USA"
 
         
         repo.fn_repo_write_to_google(schema='silver',
             table='IND_FRV_POC_PROFILE',
-            exchange=flags.ema_exchange,
+            exchange=exchange,
             scope_col='IN_SCOPE_FOR_EMA_RSI',
             cols=None,
             sheet_name= sheet_name,
@@ -166,7 +177,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         print(f"⏭️[IND-CONVERT] Converted-daily step skipped for exchange={exchange}", flush=True)
 
     if flags.auto_sample_run:
-        if flags.ema_exchange == 'USA':  # takes ema exchange
+        if exchange == 'USA':  # takes ema exchange
             symbols = os.getenv("USA_SAMPLE_SYMBOLS", "")
             symbols = [s.strip() for s in symbols.split(",") if s.strip()]
             print(f'[SAMPLE-USA-1MIN-CONVERTED] | Sample symbols {len(symbols)} > {symbols}')
@@ -195,7 +206,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
     if flags.ema_calc:
         svc = IndEmaFocusService(repo=repo)
         svc.run(
-            exchange=flags.ema_exchange,
+            exchange=exchange,
             input_schema=flags.ema_input_schema,
             input_table=flags.ema_input_table,
             lookback_days=flags.ema_lookback_days,          # parametrik
@@ -203,5 +214,32 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         )
     else:
         print('⏭️[EMA] skipped!')
+
+    # ----------------------------------------------------------
+    # 4) VWAP CALC CHAPTER
+    # ----------------------------------------------------------
+    if flags.build_vwap_focus:
+        svc = IndVwapFocusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema=flags.vwap_source_schema,
+            source_table=flags.vwap_source_table,
+            target_schema=flags.vwap_target_schema,
+            target_table=flags.vwap_target_table,
+            lookback_month=flags.vwap_lookback_month,
+            is_truncate_scope=True
+        )
+    else:
+        print(f'⏭️[VWAP] skipped for exchange={exchange}')
+
+    
+    send_email(
+        to_email=["1irfanakgul@gmail.com"],
+        subject=f"INDICATORS-{exchange} RUN INFO",
+        body=f"[NOTIFICATION] INDICATORS ({exchange}) has been calculated! \
+            \nFRVP:{flags.frvp},\nConvert2Daily:{flags.build_converted_daily},\
+            \nSample:{flags.auto_sample_run},\nEMA:{flags.ema_calc},\
+            \nVWAP:{flags.build_vwap_focus}"
+    )
 
 

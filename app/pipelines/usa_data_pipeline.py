@@ -24,7 +24,7 @@ class UsaDataPipelineFlags:
     fallback_twelvedata: bool = True
     fallback_yahoo: bool = True
     sync_archive_to_working: bool = True
-    interval: str = ''
+    interval: str = '1min'
     sync_start_date: str = None  
     trim365: bool = True
     build_focus_dataset: bool = True

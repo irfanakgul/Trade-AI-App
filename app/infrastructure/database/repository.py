@@ -1069,7 +1069,7 @@ class PostgresRepository:
 
         before_symbols = len(syms)
 
-        # Always truncate target (your requirement)
+        # Always truncate target
         with self.engine.begin() as conn:
             conn.execute(text(f'TRUNCATE TABLE {target_schema}."{target_table}";'))
 
@@ -1082,10 +1082,8 @@ class PostgresRepository:
                 "target": f'{target_schema}.{target_table}',
             }
 
-        # 2) Build
-        # NOTE: We compute trading days from the data itself (distinct day buckets), so weekends drop naturally.
         if interval == "daily":
-            # Daily input: keep last N trading days (days present in data), bar_count=0
+            # Daily input: keep last N calendar days from each symbol's latest date
             q = text(f"""
                 WITH scope AS (
                     SELECT UNNEST(CAST(:symbols AS text[])) AS symbol
@@ -1108,21 +1106,21 @@ class PostgresRepository:
                     AND t."LOW"  IS NOT NULL
                     AND t."CLOSE" IS NOT NULL
                 ),
-                days_ranked AS (
-                    SELECT symbol, day_ts,
-                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY day_ts DESC) AS rn
-                    FROM (SELECT DISTINCT symbol, day_ts FROM base) d
-                ),
-                keep_days AS (
-                    SELECT symbol, day_ts
-                    FROM days_ranked
-                    WHERE rn <= :n_days
+                symbol_day_bounds AS (
+                    SELECT
+                        symbol,
+                        MAX(day_ts) AS max_day_ts,
+                        (MAX(day_ts) - (:n_days * INTERVAL '1 day')) AS min_keep_day_ts
+                    FROM base
+                    GROUP BY symbol
                 ),
                 filtered AS (
                     SELECT b.*
                     FROM base b
-                    JOIN keep_days k
-                    ON k.symbol = b.symbol AND k.day_ts = b.day_ts
+                    JOIN symbol_day_bounds sb
+                    ON sb.symbol = b.symbol
+                    AND b.day_ts >= sb.min_keep_day_ts
+                    AND b.day_ts <= sb.max_day_ts
                 ),
                 sym_stats AS (
                     SELECT
@@ -1137,7 +1135,8 @@ class PostgresRepository:
                     SELECT f.symbol, MIN(f.ts) AS highest_date
                     FROM filtered f
                     JOIN sym_stats s
-                    ON s.symbol = f.symbol AND f.high = s.highest_value
+                    ON s.symbol = f.symbol
+                    AND f.high = s.highest_value
                     GROUP BY f.symbol
                 )
                 INSERT INTO {target_schema}."{target_table}" (
@@ -1166,10 +1165,14 @@ class PostgresRepository:
                 ORDER BY f.symbol, f.day_ts;
             """)
 
-            params = {"exchange": exchange, "symbols": syms, "n_days": int(start_trading_days_back)}
+            params = {
+                "exchange": exchange,
+                "symbols": syms,
+                "n_days": int(start_trading_days_back),
+            }
 
         elif interval == "1min":
-            # Minute input: aggregate to daily with correct SUM(VOLUME) and COUNT(*)
+            # Minute input: aggregate to daily, but filter by last N calendar days
             q = text(f"""
                 WITH scope AS (
                     SELECT UNNEST(CAST(:symbols AS text[])) AS symbol
@@ -1192,21 +1195,21 @@ class PostgresRepository:
                     AND t."LOW"  IS NOT NULL
                     AND t."CLOSE" IS NOT NULL
                 ),
-                days_ranked AS (
-                    SELECT symbol, day_ts,
-                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY day_ts DESC) AS rn
-                    FROM (SELECT DISTINCT symbol, day_ts FROM base) d
-                ),
-                keep_days AS (
-                    SELECT symbol, day_ts
-                    FROM days_ranked
-                    WHERE rn <= :n_days
+                symbol_day_bounds AS (
+                    SELECT
+                        symbol,
+                        MAX(day_ts) AS max_day_ts,
+                        (MAX(day_ts) - (:n_days * INTERVAL '1 day')) AS min_keep_day_ts
+                    FROM base
+                    GROUP BY symbol
                 ),
                 filtered AS (
                     SELECT b.*
                     FROM base b
-                    JOIN keep_days k
-                    ON k.symbol = b.symbol AND k.day_ts = b.day_ts
+                    JOIN symbol_day_bounds sb
+                    ON sb.symbol = b.symbol
+                    AND b.day_ts >= sb.min_keep_day_ts
+                    AND b.day_ts <= sb.max_day_ts
                 ),
                 sym_stats AS (
                     SELECT
@@ -1221,7 +1224,8 @@ class PostgresRepository:
                     SELECT f.symbol, MIN(f.ts) AS highest_date
                     FROM filtered f
                     JOIN sym_stats s
-                    ON s.symbol = f.symbol AND f.high = s.highest_value
+                    ON s.symbol = f.symbol
+                    AND f.high = s.highest_value
                     GROUP BY f.symbol
                 ),
                 daily_agg AS (
@@ -1245,13 +1249,17 @@ class PostgresRepository:
                         s.max_date,
                         s.highest_value,
                         h.highest_date,
-                        -- OPEN = value at first_ts
-                        (SELECT f.open FROM filtered f
-                        WHERE f.symbol=a.symbol AND f.day_ts=a.day_ts AND f.ts=a.first_ts
+                        (SELECT f.open
+                        FROM filtered f
+                        WHERE f.symbol = a.symbol
+                        AND f.day_ts = a.day_ts
+                        AND f.ts = a.first_ts
                         LIMIT 1) AS open,
-                        -- CLOSE = value at last_ts
-                        (SELECT f.close FROM filtered f
-                        WHERE f.symbol=a.symbol AND f.day_ts=a.day_ts AND f.ts=a.last_ts
+                        (SELECT f.close
+                        FROM filtered f
+                        WHERE f.symbol = a.symbol
+                        AND f.day_ts = a.day_ts
+                        AND f.ts = a.last_ts
                         LIMIT 1) AS close,
                         a.high,
                         a.low,
@@ -1279,13 +1287,17 @@ class PostgresRepository:
                     d.high AS "HIGH",
                     d.low AS "LOW",
                     d.close AS "CLOSE",
-                    COALESCE(d.volume,0.0) AS "VOLUME",
+                    COALESCE(d.volume, 0.0) AS "VOLUME",
                     d.bar_count AS "BAR_COUNT"
                 FROM daily_ohlc d
                 ORDER BY d.symbol, d.day_ts;
             """)
 
-            params = {"exchange": exchange, "symbols": syms, "n_days": int(start_trading_days_back)}
+            params = {
+                "exchange": exchange,
+                "symbols": syms,
+                "n_days": int(start_trading_days_back),
+            }
 
         else:
             raise ValueError(f"Unsupported interval: {interval} (use '1min' or 'daily')")
@@ -1822,3 +1834,113 @@ class PostgresRepository:
         )
 
         print(f'[WRITE_GOOGLE] -{table}- has been saved into google sheets | {replace_append}')
+
+
+    ###########################################
+    # ANCHORED VWAP REPO CODES
+    ###########################################
+
+    # truncate vwap focus target
+    def delete_ind_vwap_scope(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+    ) -> int:
+        q = text(f'''
+            DELETE FROM {schema}."{table}"
+            WHERE "EXCHANGE" = :exchange
+        ''')
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+    # vwap
+    def fetch_vwap_focus_source_data(
+        self,
+        source_schema: str,
+        source_table: str,
+        exchange: str,
+        lookback_month: int,
+    ) -> List[Dict[str, Any]]:
+        q = text(f'''
+            WITH symbol_last_ts AS (
+                SELECT
+                    "SYMBOL",
+                    MAX("TIMESTAMP") AS max_ts
+                FROM {source_schema}."{source_table}"
+                WHERE "EXCHANGE" = :exchange
+                GROUP BY "SYMBOL"
+            )
+            SELECT
+                s."EXCHANGE",
+                s."SYMBOL",
+                s."TIMESTAMP",
+                s."HIGH",
+                s."VOLUME"
+            FROM {source_schema}."{source_table}" s
+            JOIN symbol_last_ts l
+            ON s."SYMBOL" = l."SYMBOL"
+            WHERE s."EXCHANGE" = :exchange
+            AND s."TIMESTAMP" >= (l.max_ts - make_interval(months => :lookback_month))
+            AND s."TIMESTAMP" <= l.max_ts
+            AND s."TIMESTAMP" IS NOT NULL
+            AND s."HIGH" IS NOT NULL
+            AND s."VOLUME" IS NOT NULL
+            AND s."VOLUME" >= 0
+            ORDER BY s."SYMBOL" ASC, s."TIMESTAMP" ASC
+        ''')
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                q,
+                {
+                    "exchange": exchange,
+                    "lookback_month": lookback_month,
+                }
+            ).fetchall()
+
+        return [dict(r._mapping) for r in rows]
+
+    #insert vwap to sb
+    def insert_ind_vwap_rows(
+        self,
+        target_schema: str,
+        target_table: str,
+        rows: List[Dict[str, Any]],
+    ) -> int:
+        if not rows:
+            return 0
+
+        q = text(f'''
+            INSERT INTO {target_schema}."{target_table}" (
+                "EXCHANGE",
+                "SYMBOL",
+                "START_TIME",
+                "END_TIME",
+                "HIGHEST_VALUE",
+                "HIGHEST_TIMESTAMP",
+                "VWAP",
+                "AVG_VOLUME_10D",
+                "AVG_VOLUME_20D",
+                "AVG_VOLUME_30D",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,
+                :SYMBOL,
+                :START_TIME,
+                :END_TIME,
+                :HIGHEST_VALUE,
+                :HIGHEST_TIMESTAMP,
+                :VWAP,
+                :AVG_VOLUME_10D,
+                :AVG_VOLUME_20D,
+                :AVG_VOLUME_30D,
+                :CREATED_AT
+            )
+        ''')
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)
