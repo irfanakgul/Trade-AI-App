@@ -2104,3 +2104,141 @@ class PostgresRepository:
             conn.execute(q, rows)
 
         return len(rows)
+    
+
+    # RSI CALC
+    def delete_ind_rsi_scope(self, exchange: str) -> int:
+        q = text("""
+            DELETE FROM silver."IND_RSI_FOCUS"
+            WHERE "EXCHANGE" = :exchange;
+        """)
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+    def insert_ind_rsi_focus_rows(self, rows: list[dict]) -> int:
+        if not rows:
+            return 0
+
+        q = text("""
+            INSERT INTO silver."IND_RSI_FOCUS" (
+                "EXCHANGE","SYMBOL","END_DATE",
+                "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,:SYMBOL,:END_DATE,
+                :RSI,:RSI_MA,:RSI_STATUS,:RSI_CROSS,:RSI_CROSS_DAYS_AGO,
+                :CREATED_AT
+            );
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)
+    
+
+    # MFI CALC
+
+    def delete_ind_mfi_scope(self, exchange: str) -> int:
+        q = text("""
+            DELETE FROM silver."IND_MFI_FOCUS"
+            WHERE "EXCHANGE" = :exchange;
+        """)
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+    def insert_ind_mfi_focus_rows(self, rows: list[dict]) -> int:
+        if not rows:
+            return 0
+
+        q = text("""
+            INSERT INTO silver."IND_MFI_FOCUS" (
+                "EXCHANGE","SYMBOL","END_DATE",
+                "MFI","MF_TODAY","MF_YESTERDAY","MF_12DAY_AVG","MF_DIRECTION",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,:SYMBOL,:END_DATE,
+                :MFI,:MF_TODAY,:MF_YESTERDAY,:MF_12DAY_AVG,:MF_DIRECTION,
+                :CREATED_AT
+            );
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)
+    
+    def fetch_last_n_days_ohlcv_for_symbols(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+        symbols: list[str],
+        n_days: int,
+        ts_col: str = "TIMESTAMP",
+        close_col: str = "CLOSE",
+        volume_col: str = "VOLUME",
+        high_col: str = "HIGH",
+        low_col: str = "LOW",
+    ) -> list[dict]:
+        if not symbols:
+            return []
+
+        if not schema or not str(schema).strip():
+            raise ValueError(f"fetch_last_n_days_ohlcv_for_symbols: schema is empty for table={table}")
+
+        if isinstance(n_days, tuple):
+            n_days = int(n_days[0])
+        n_days = int(n_days)
+
+        table_ref = f'{schema}."{table}"'
+
+        q = text(f"""
+            WITH ranked AS (
+                SELECT
+                    "EXCHANGE" AS exchange,
+                    "SYMBOL" AS symbol,
+                    "{ts_col}" AS ts,
+                    "{close_col}"::double precision AS close,
+                    "{volume_col}"::double precision AS volume,
+                    "{high_col}"::double precision AS high,
+                    "{low_col}"::double precision AS low,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY "SYMBOL"
+                        ORDER BY "{ts_col}" DESC
+                    ) AS rn
+                FROM {table_ref}
+                WHERE "EXCHANGE" = :exchange
+                AND "SYMBOL" IN :symbols
+                AND "{ts_col}" IS NOT NULL
+                AND "{close_col}" IS NOT NULL
+                AND "{volume_col}" IS NOT NULL
+            )
+            SELECT exchange, symbol, ts, close, volume, high, low
+            FROM ranked
+            WHERE rn <= :n_days
+            ORDER BY symbol ASC, ts ASC;
+        """).bindparams(bindparam("symbols", expanding=True))
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                q,
+                {"exchange": exchange, "symbols": symbols, "n_days": n_days}
+            ).fetchall()
+
+        return [
+            {
+                "EXCHANGE": r[0],
+                "SYMBOL": r[1],
+                "TIMESTAMP": r[2],
+                "CLOSE": r[3],
+                "VOLUME": r[4],
+                "HIGH": r[5],
+                "LOW": r[6],
+            }
+            for r in rows
+        ]

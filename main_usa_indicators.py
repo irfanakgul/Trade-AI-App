@@ -26,7 +26,7 @@ def main():
         frvp=False,
 
         # --- Converted Daily (for EMA/RSI input) ---
-        build_converted_daily=True, #should be true to generate sample data based on converted 1min data
+        build_converted_daily=False, #should be true to generate sample data based on converted 1min data
         converted_daily_input_schema="silver",
         converted_daily_input_table="FRVP_USA_FOCUS_DATASET",
         converted_daily_input_interval="1min",
@@ -44,11 +44,19 @@ def main():
         ema_input_table = 'usa_focus_2e_indicators_converted_daily',
 
         # VWAP flags
-        build_vwap_focus = False,
+        build_vwap_focus = True,
         vwap_source_table = "usa_focus_2e_indicators_converted_daily",
 
+        # RSI flags
+        build_rsi_focus = True,
+        rsi_source_table='usa_focus_2e_indicators_converted_daily',
+
+        # MFI FLAGS
+        build_mfi_focus = True,
+        mfi_source_table='usa_focus_2e_indicators_converted_daily',
+
         # bar status identification
-        build_bar_status = False,
+        build_bar_status = True,
         bar_status_source_schema = "raw",
         bar_status_source_table = "usa_1min_archive"
   

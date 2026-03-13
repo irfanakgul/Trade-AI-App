@@ -32,13 +32,21 @@ def main():
         converted_daily_start_trading_days_back=130,
 
         # Flags for EMA and other 2e indicators 
-        ema_calc = True, #True calc is active False: skip ema calc
-        ema_input_schema = 'silver',
+        ema_calc = False, #True calc is active False: skip ema calc
         ema_input_table = 'bist_focus_2e_indicators_converted_daily',
 
         # VWAP flags
         build_vwap_focus = False,
         vwap_source_table = "bist_focus_2e_indicators_converted_daily",
+
+        # RSI flags
+        build_rsi_focus = False,
+        rsi_source_table='bist_focus_2e_indicators_converted_daily',
+
+        # MFI FLAGS
+        build_mfi_focus = True,
+        mfi_source_table='bist_focus_2e_indicators_converted_daily',
+
 
         # bar status identification
         build_bar_status = False,

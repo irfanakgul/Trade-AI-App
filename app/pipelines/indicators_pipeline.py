@@ -10,6 +10,10 @@ from app.services.ind_ema_focus_service import IndEmaFocusService
 from app.services.ind_vwap_focus_service import IndVwapFocusService # type: ignore
 from app.services.email_service import send_email
 from app.services.ind_bar_status_service import IndBarStatusService
+from app.services.ind_rsi_focus_service import IndRsiFocusService
+from app.services.ind_mfi_focus_service import IndMfiFocusService
+
+
 
 
 
@@ -78,7 +82,7 @@ class IndicatorsFlags:
 
     #ema flags
     ema_calc: bool = True
-    ema_input_schema: str = ''
+    ema_input_schema: str = 'silver'
     ema_input_table: str = ''
     ema_calc_history_days: int= 120
     ema_signal_lookback_days: int = 20
@@ -91,6 +95,21 @@ class IndicatorsFlags:
     vwap_target_schema: str = "silver"
     vwap_target_table: str = "IND_VWAP_FOCUS"
     vwap_lookback_month: int = 4
+
+    # RSI CALC flags
+    build_rsi_focus: bool = True
+    rsi_source_schema: str = 'silver'
+    rsi_source_table: str = ''
+    rsi_calc_history_days: int = 120
+    rsi_signal_lookback_days: int = 20
+    rsi_is_truncate_scope: bool = True
+
+    # MFI CALC
+    build_mfi_focus: bool = True
+    mfi_source_schema: str = 'silver'
+    mfi_source_table: str = ''
+    mfi_calc_history_days: int = 120
+    mfi_is_truncate_scope: bool = True
 
     #bar status identification flags
     build_bar_status: bool = False
@@ -245,6 +264,37 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         )
     else:
         print(f'⏭️[VWAP] skipped for exchange={exchange}')
+
+    # RSI CALC
+    if flags.build_rsi_focus:
+        svc = IndRsiFocusService(repo=repo)
+
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.rsi_source_schema,
+            input_table=flags.rsi_source_table,
+            rsi_calc_history_days=flags.rsi_calc_history_days,
+            rsi_signal_lookback_days=flags.rsi_signal_lookback_days,
+            is_truncate_scope=flags.rsi_is_truncate_scope,
+        )
+    else:
+        print(f'⏭️ [RSI] skipped for exchange={exchange}')
+
+    # MFI CALC
+    if flags.build_mfi_focus:
+        svc = IndMfiFocusService(repo=repo)
+        
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.mfi_source_schema,
+            input_table=flags.mfi_source_table,
+            mfi_calc_history_days=flags.mfi_calc_history_days,
+            is_truncate_scope=flags.mfi_is_truncate_scope,
+        )
+    else:
+        print(f'⏭️ [MFI] skipped for exchange={exchange}')
+
+
 
     # bar status identification
     if flags.build_bar_status:
