@@ -9,6 +9,7 @@ from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
 from app.services.ind_ema_focus_service import IndEmaFocusService
 from app.services.ind_vwap_focus_service import IndVwapFocusService # type: ignore
 from app.services.email_service import send_email
+from app.services.ind_bar_status_service import IndBarStatusService
 
 
 
@@ -79,7 +80,8 @@ class IndicatorsFlags:
     ema_calc: bool = True
     ema_input_schema: str = ''
     ema_input_table: str = ''
-    ema_lookback_days: int = 20 #default 20 day
+    ema_calc_history_days: int= 120
+    ema_signal_lookback_days: int = 20
     ema_is_truncate_scope: bool = True
 
     #VWAP falgs
@@ -89,6 +91,16 @@ class IndicatorsFlags:
     vwap_target_schema: str = "silver"
     vwap_target_table: str = "IND_VWAP_FOCUS"
     vwap_lookback_month: int = 4
+
+    #bar status identification flags
+    build_bar_status: bool = False
+    bar_status_source_schema: str = ""
+    bar_status_source_table: str = ""
+    bar_status_target_schema: str = "silver"
+    bar_status_target_table: str = "IND_BAR_STATUS"
+
+    # mail
+    mail_service:bool = False
 
 
 
@@ -209,9 +221,11 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
             exchange=exchange,
             input_schema=flags.ema_input_schema,
             input_table=flags.ema_input_table,
-            lookback_days=flags.ema_lookback_days,          # parametrik
-            is_truncate_scope=flags.ema_is_truncate_scope,    # exchange bazlı delete
+            ema_calc_history_days=flags.ema_calc_history_days,
+            ema_signal_lookback_days=flags.ema_signal_lookback_days,
+            is_truncate_scope=flags.ema_is_truncate_scope,
         )
+        
     else:
         print('⏭️[EMA] skipped!')
 
@@ -232,14 +246,28 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
     else:
         print(f'⏭️[VWAP] skipped for exchange={exchange}')
 
+    # bar status identification
+    if flags.build_bar_status:
+        svc = IndBarStatusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema=flags.bar_status_source_schema,
+            source_table=flags.bar_status_source_table,
+            target_schema=flags.bar_status_target_schema,
+            target_table=flags.bar_status_target_table,
+            is_truncate_scope=True,
+        )
+    else:
+        print(f"[IND] BAR_STATUS step skipped for exchange={exchange}")
     
-    send_email(
-        to_email=["1irfanakgul@gmail.com"],
-        subject=f"INDICATORS-{exchange} RUN INFO",
-        body=f"[NOTIFICATION] INDICATORS ({exchange}) has been calculated! \
-            \nFRVP:{flags.frvp},\nConvert2Daily:{flags.build_converted_daily},\
-            \nSample:{flags.auto_sample_run},\nEMA:{flags.ema_calc},\
-            \nVWAP:{flags.build_vwap_focus}"
-    )
 
-
+    #e-mail
+    if flags.mail_service:
+        send_email(
+            to_email=["1irfanakgul@gmail.com"],
+            subject=f"INDICATORS-{exchange} RUN INFO",
+            body=f"[NOTIFICATION] INDICATORS ({exchange}) has been calculated! \
+                \nFRVP:{flags.frvp},\nConvert2Daily:{flags.build_converted_daily},\
+                \nSample:{flags.auto_sample_run},\nEMA:{flags.ema_calc},\
+                \nVWAP:{flags.build_vwap_focus}"
+        )

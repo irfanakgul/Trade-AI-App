@@ -23,7 +23,7 @@ def main():
         cutt_off_date=None,
 
         #FLAGS: converting from min to daily for 2e indicator calc
-        build_converted_daily=True,
+        build_converted_daily=False,
         converted_daily_input_schema="silver",
         converted_daily_input_table="FRVP_BIST_FOCUS_DATASET",
         converted_daily_input_interval="daily",
@@ -35,12 +35,15 @@ def main():
         ema_calc = True, #True calc is active False: skip ema calc
         ema_input_schema = 'silver',
         ema_input_table = 'bist_focus_2e_indicators_converted_daily',
-        ema_lookback_days = 20, #default 20 day
-        ema_is_truncate_scope = True,
 
         # VWAP flags
-        build_vwap_focus = True,
+        build_vwap_focus = False,
         vwap_source_table = "bist_focus_2e_indicators_converted_daily",
+
+        # bar status identification
+        build_bar_status = False,
+        bar_status_source_schema = "raw",
+        bar_status_source_table = "bist_1min_archive"
 
     )
     

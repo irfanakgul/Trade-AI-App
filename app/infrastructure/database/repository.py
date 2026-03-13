@@ -1944,3 +1944,163 @@ class PostgresRepository:
             conn.execute(q, rows)
 
         return len(rows)
+    
+
+    ### IND bar status identification
+    def get_bar_status_focus_symbols(self, exchange: str) -> list[str]:
+        q = text("""
+            SELECT DISTINCT "SYMBOL"
+            FROM silver."IND_FRV_POC_PROFILE"
+            WHERE "EXCHANGE" = :exchange
+            AND "IN_SCOPE_FOR_EMA_RSI" = TRUE
+            ORDER BY "SYMBOL"
+        """)
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange}).fetchall()
+        return [r[0] for r in rows]
+    
+    def delete_ind_bar_status_scope(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+    ) -> int:
+        q = text(f'''
+            DELETE FROM {schema}."{table}"
+            WHERE "EXCHANGE" = :exchange
+        ''')
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+
+
+    def fetch_bar_status_source_rows(
+        self,
+        source_schema: str,
+        source_table: str,
+        exchange: str,
+        symbols: list[str],
+    ) -> list[dict]:
+        if not symbols:
+            return []
+
+        q = text(f"""
+            WITH base AS (
+                SELECT
+                    "SYMBOL",
+                    "TIMESTAMP",
+                    "OPEN",
+                    "CLOSE"
+                FROM {source_schema}."{source_table}"
+                WHERE "SYMBOL" IN :symbols
+                AND "TIMESTAMP" IS NOT NULL
+                AND "OPEN" IS NOT NULL
+                AND "CLOSE" IS NOT NULL
+            ),
+            last_day_per_symbol AS (
+                SELECT
+                    "SYMBOL",
+                    MAX(DATE("TIMESTAMP")) AS last_day_date
+                FROM base
+                GROUP BY "SYMBOL"
+            ),
+            last_day_rows AS (
+                SELECT b.*
+                FROM base b
+                JOIN last_day_per_symbol d
+                ON b."SYMBOL" = d."SYMBOL"
+                AND DATE(b."TIMESTAMP") = d.last_day_date
+            ),
+            ranked AS (
+                SELECT
+                    *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY "SYMBOL"
+                        ORDER BY "TIMESTAMP" ASC
+                    ) AS rn_open,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY "SYMBOL"
+                        ORDER BY "TIMESTAMP" DESC
+                    ) AS rn_close
+                FROM last_day_rows
+            ),
+            opens AS (
+                SELECT
+                    "SYMBOL",
+                    "TIMESTAMP" AS first_minute,
+                    "OPEN"::double precision AS open_price
+                FROM ranked
+                WHERE rn_open = 1
+            ),
+            closes AS (
+                SELECT
+                    "SYMBOL",
+                    "TIMESTAMP" AS last_minute,
+                    "CLOSE"::double precision AS close_price
+                FROM ranked
+                WHERE rn_close = 1
+            )
+            SELECT
+                o."SYMBOL",
+                o.first_minute AS "FIRST_MINUTE",
+                c.last_minute AS "LAST_MINUTE",
+                o.open_price AS "OPEN_PRICE",
+                c.close_price AS "CLOSE_PRICE"
+            FROM opens o
+            JOIN closes c
+            ON o."SYMBOL" = c."SYMBOL"
+            ORDER BY o."SYMBOL"
+        """).bindparams(bindparam("symbols", expanding=True))
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"symbols": symbols}).fetchall()
+
+        out = []
+        for r in rows:
+            d = dict(r._mapping)
+            d["EXCHANGE"] = exchange
+            out.append(d)
+
+        return out
+    
+
+    def insert_ind_bar_status_rows(
+        self,
+        target_schema: str,
+        target_table: str,
+        rows: List[Dict[str, Any]],
+    ) -> int:
+        if not rows:
+            return 0
+
+        q = text(f'''
+            INSERT INTO {target_schema}."{target_table}" (
+                "EXCHANGE",
+                "SYMBOL",
+                "FIRST_MINUTE",
+                "LAST_MINUTE",
+                "OPEN_PRICE",
+                "CLOSE_PRICE",
+                "DIFFER",
+                "PERC",
+                "BAR_STATUS",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,
+                :SYMBOL,
+                :FIRST_MINUTE,
+                :LAST_MINUTE,
+                :OPEN_PRICE,
+                :CLOSE_PRICE,
+                :DIFFER,
+                :PERC,
+                :BAR_STATUS,
+                :CREATED_AT
+            )
+        ''')
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)

@@ -36,7 +36,7 @@ def main():
 
 
         # auto sample genarete on converted daily
-        auto_sample_run = True, #use ema_exchange for exchange
+        auto_sample_run = False, #use ema_exchange for exchange
 
         #ema usa flags
         ema_calc = True,
@@ -44,8 +44,13 @@ def main():
         ema_input_table = 'usa_focus_2e_indicators_converted_daily',
 
         # VWAP flags
-        build_vwap_focus = True,
+        build_vwap_focus = False,
         vwap_source_table = "usa_focus_2e_indicators_converted_daily",
+
+        # bar status identification
+        build_bar_status = False,
+        bar_status_source_schema = "raw",
+        bar_status_source_table = "usa_1min_archive"
   
     )
 

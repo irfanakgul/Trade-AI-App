@@ -7,7 +7,7 @@ jobs:
     # daily calculations (raw+working+trim+focus)
   - name: bist_daily_calc
     run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
-    at: "23:55"
+    at: "03:00"
     cmd: ".venv/bin/python -u main_bist_daily_data.py"
     lock: "bist_daily_calc"
 
@@ -31,7 +31,7 @@ jobs:
     cmd: ".venv/bin/python -u main_usa_1min_data.py"
     lock: "usa_1min_batch"
 
-  - name: usa_indicators
+  - name: usa_indicators 
     depends_on: "usa_1min_batch"  #"bist_batch" #open for depends usage
     # run_days: [SUN] #remove if u will use depends on
     # at: "23:32" #remove if u will use depends on
