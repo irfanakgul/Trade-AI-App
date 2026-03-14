@@ -32,15 +32,15 @@ def main():
         converted_daily_start_trading_days_back=130,
 
         # Flags for EMA and other 2e indicators 
-        ema_calc = False, #True calc is active False: skip ema calc
+        ema_calc = True, #True calc is active False: skip ema calc
         ema_input_table = 'bist_focus_2e_indicators_converted_daily',
 
         # VWAP flags
-        build_vwap_focus = False,
+        build_vwap_focus = True,
         vwap_source_table = "bist_focus_2e_indicators_converted_daily",
 
         # RSI flags
-        build_rsi_focus = False,
+        build_rsi_focus = True,
         rsi_source_table='bist_focus_2e_indicators_converted_daily',
 
         # MFI FLAGS
@@ -49,14 +49,19 @@ def main():
 
 
         # bar status identification
-        build_bar_status = False,
+        build_bar_status = True,
         bar_status_source_schema = "raw",
-        bar_status_source_table = "bist_1min_archive"
+        bar_status_source_table = "bist_1min_archive",
+
+        # master combined indicator
+        run_combined_indicators=True,
+        master_ind_target_table = "BIST_MASTER_COMBINED_INDICATORS",
+        master_ind_log_table = "LOG_BIST_MASTER_COMBINED_INDICATORS",
 
     )
     
 
-    run_indicators_for_exchange(repo, "BIST", flags)
+    run_indicators_for_exchange(repo=repo, exchange="BIST", flags=flags)
 
 if __name__ == "__main__":
     main()

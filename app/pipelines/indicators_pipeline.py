@@ -12,6 +12,8 @@ from app.services.email_service import send_email
 from app.services.ind_bar_status_service import IndBarStatusService
 from app.services.ind_rsi_focus_service import IndRsiFocusService
 from app.services.ind_mfi_focus_service import IndMfiFocusService
+from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService
+
 
 
 
@@ -117,6 +119,13 @@ class IndicatorsFlags:
     bar_status_source_table: str = ""
     bar_status_target_schema: str = "silver"
     bar_status_target_table: str = "IND_BAR_STATUS"
+
+    # master combined indicator flags
+    run_combined_indicators: bool = True
+    master_ind_target_schema: str = "gold"
+    master_ind_target_table: str = ""
+    master_ind_log_schema: str = "logs"
+    master_ind_log_table: str = ""
 
     # mail
     mail_service:bool = False
@@ -310,14 +319,55 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
     else:
         print(f"[IND] BAR_STATUS step skipped for exchange={exchange}")
     
+    #####################################################################
+    #                 MASSTER COMBINED INDICATORS CALC                  #
+    #####################################################################
+
+    if flags.run_combined_indicators:
+        svc = IndMasterCombinedIndicatorsService(repo=repo)
+
+        svc.run(
+            exchange=exchange,
+            target_schema=flags.master_ind_target_schema,
+            target_table=flags.master_ind_target_table,
+            log_schema=flags.master_ind_log_schema,
+            log_table=flags.master_ind_log_table,
+
+            frvp_table="IND_FRV_POC_PROFILE",
+            bs_table="IND_BAR_STATUS",
+            ema_table="IND_EMA_FOCUS",
+            rsi_table="IND_RSI_FOCUS",
+            mfi_table="IND_MFI_FOCUS",
+            vwap_table="IND_VWAP_FOCUS",
+        )
+        #save result into google sheet 
+        if exchange == 'BIST':
+            sheet_name = "MASTER_IND_BIST"
+            table='BIST_MASTER_COMBINED_INDICATORS'
+
+        elif exchange == 'USA':
+            sheet_name = "MASTER_IND_USA"
+            table='USA_MASTER_COMBINED_INDICATORS'
+        
+        repo.fn_repo_write_to_google_generic(
+            schema='gold',
+            table=table,
+            sheet_name= sheet_name,
+            replace_append = 'replace')
+        
+    else:
+        print(f"⏭️[IND-MASTER] skipped for exchange={exchange}")
+
+
+
 
     #e-mail
     if flags.mail_service:
         send_email(
             to_email=["1irfanakgul@gmail.com"],
             subject=f"INDICATORS-{exchange} RUN INFO",
-            body=f"[NOTIFICATION] INDICATORS ({exchange}) has been calculated! \
+            body=f"[NOTIFICATION]\n \Indicators ({exchange}) has been calculated! \
                 \nFRVP:{flags.frvp},\nConvert2Daily:{flags.build_converted_daily},\
                 \nSample:{flags.auto_sample_run},\nEMA:{flags.ema_calc},\
-                \nVWAP:{flags.build_vwap_focus}"
+                \nVWAP:{flags.build_vwap_focus}\n MASTER IND:{flags.run_combined_indicators}"
         )

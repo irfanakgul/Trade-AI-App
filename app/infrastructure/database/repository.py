@@ -1835,6 +1835,52 @@ class PostgresRepository:
 
         print(f'[WRITE_GOOGLE] -{table}- has been saved into google sheets | {replace_append}')
 
+    # generic write to google
+    def fn_repo_write_to_google_generic(
+        self,
+        schema: str,
+        table: str,
+        sheet_name: str = "",
+        replace_append: str = ''
+    ):
+        """
+        Generic table reader.
+
+        Parameters
+        ----------
+        schema : str
+            Schema name
+        table : str
+            Table name
+        write_to_google : bool
+            If True, writes result dataframe to Google Sheets
+        sheet_name : str
+            Target Google Sheet tab name
+
+        Returns
+        -------
+        pandas.DataFrame
+        """
+
+
+        query = text(f"""
+            SELECT *
+            FROM "{schema}"."{table}"
+        """)
+
+        with self.engine.connect() as conn:
+            df = pd.read_sql_query(query, conn)
+
+        if not sheet_name:
+            raise ValueError("sheet_name must be provided when write_to_google=True")
+
+        fn_write_to_google(
+            df=df,
+            sheet_name=sheet_name,
+            replace_or_append=replace_append
+        )
+        print(f'[WRITE_GOOGLE] -{table}- has been saved into google sheets | {replace_append}')
+
 
     ###########################################
     # ANCHORED VWAP REPO CODES
@@ -2242,3 +2288,156 @@ class PostgresRepository:
             }
             for r in rows
         ]
+    
+
+    ###########################################
+    # MASTER COMBINED INDICATORS
+    ###########################################
+
+
+    def truncate_table(self, schema: str, table: str) -> None:
+        q = text(f'TRUNCATE TABLE {schema}."{table}";')
+        with self.engine.begin() as conn:
+            conn.execute(q)
+
+
+    def build_master_combined_indicators(
+        self,
+        exchange: str,
+        target_schema: str,
+        target_table: str,
+        log_schema: str,
+        log_table: str,
+        frvp_table: str,
+        bs_table: str,
+        ema_table: str,
+        rsi_table: str,
+        mfi_table: str,
+        vwap_table: str,
+    ) -> Dict[str, int]:
+        """
+        Build master combined indicators table from silver indicator tables.
+        - Target table is truncated before insert.
+        - Log table is append-only.
+        """
+
+        exchange = exchange.upper().strip()
+
+        # 1) truncate master target
+        self.truncate_table(target_schema, target_table)
+
+        created_day_expr = "TO_CHAR(CURRENT_TIMESTAMP, 'DD-MM-YYYY')"
+
+        select_sql = f"""
+            SELECT
+                frvp."EXCHANGE" AS "EXCHANGE",
+                frvp."SYMBOL" AS "SYMBOL",
+
+                frvp."INTERVAL" AS "FRVP_INTERVAL",
+                frvp."FRVP_PERIOD_TYPE" AS "FRVP_PERIOD_TYPE",
+                frvp."HIGHEST_DATE" AS "FRVP_HIGHEST_DATE",
+                frvp."HIGHEST_VALUE" AS "FRVP_HIGHEST_VALUE",
+                frvp."ROW_COUNT_AFTER_HIGHEST" AS "FRVP_ROW_COUNT_AFTER_HIGHEST",
+                frvp."DAY_COUNT_AFTER_HIGHEST" AS "FRVP_DAY_COUNT_AFTER_HIGHEST",
+                frvp."LATEST_CLOSE_VALUE" AS "FRVP_LATEST_CLOSE_VALUE",
+                frvp."POC" AS "FRVP_POC",
+                frvp."VAL" AS "FRVP_VAL",
+                frvp."VAH" AS "FRVP_VAH",
+
+                bs."OPEN_PRICE" AS "BS_OPEN_PRICE",
+                bs."CLOSE_PRICE" AS "BS_CLOSE_PRICE",
+                bs."DIFFER" AS "BS_DIFFER",
+                bs."PERC" AS "BS_PERC",
+                bs."BAR_STATUS" AS "BS_BAR_STATUS",
+
+                ema."END_DATE" AS "EMA_END_DATE",
+                ema."EMA5" AS "EMA5",
+                ema."EMA20" AS "EMA20",
+                ema."EMA_STATUS" AS "EMA_STATUS",
+                ema."EMA_CROSS" AS "EMA_CROSS",
+                ema."DAYS_SINCE_CROSS" AS "EMA_DAYS_SINCE_CROSS",
+
+                rsi."RSI" AS "RSI",
+                rsi."RSI_MA" AS "RSI_MA",
+                rsi."RSI_STATUS" AS "RSI_STATUS",
+                rsi."RSI_CROSS" AS "RSI_CROSS",
+                rsi."RSI_CROSS_DAYS_AGO" AS "RSI_CROSS_DAYS_AGO",
+
+                mfi."MFI" AS "MFI",
+                mfi."MF_TODAY" AS "MFI_TODAY",
+                mfi."MF_YESTERDAY" AS "MFI_YESTERDAY",
+                mfi."MF_12DAY_AVG" AS "MFI_12DAY_AVG",
+                mfi."MF_DIRECTION" AS "MFI_DIRECTION",
+
+                vwap."HIGHEST_VALUE" AS "VWAP_HIGHEST_VALUE",
+                vwap."HIGHEST_TIMESTAMP" AS "VWAP_HIGHEST_TIMESTAMP",
+                vwap."VWAP" AS "VWAP",
+                vwap."AVG_VOLUME_10D" AS "VOL_AVG_10DAY",
+                vwap."AVG_VOLUME_20D" AS "VOL_AVG_20DAY",
+                vwap."AVG_VOLUME_30D" AS "VOL_AVG_30DAY",
+
+                CURRENT_TIMESTAMP AS "CREATED_AT",
+                {created_day_expr} AS "CREATED_DAY"
+
+            FROM silver."{frvp_table}" frvp
+            LEFT JOIN silver."{bs_table}" bs
+                ON frvp."EXCHANGE" = bs."EXCHANGE"
+                AND frvp."SYMBOL" = bs."SYMBOL"
+            LEFT JOIN silver."{ema_table}" ema
+                ON frvp."EXCHANGE" = ema."EXCHANGE"
+                AND frvp."SYMBOL" = ema."SYMBOL"
+            LEFT JOIN silver."{rsi_table}" rsi
+                ON frvp."EXCHANGE" = rsi."EXCHANGE"
+                AND frvp."SYMBOL" = rsi."SYMBOL"
+            LEFT JOIN silver."{mfi_table}" mfi
+                ON frvp."EXCHANGE" = mfi."EXCHANGE"
+                AND frvp."SYMBOL" = mfi."SYMBOL"
+            LEFT JOIN silver."{vwap_table}" vwap
+                ON frvp."EXCHANGE" = vwap."EXCHANGE"
+                AND frvp."SYMBOL" = vwap."SYMBOL"
+            WHERE frvp."EXCHANGE" = :exchange
+            AND frvp."IN_SCOPE_FOR_EMA_RSI" = TRUE
+        """
+
+        insert_master_sql = f"""
+            INSERT INTO {target_schema}."{target_table}" (
+                "EXCHANGE","SYMBOL",
+                "FRVP_INTERVAL","FRVP_PERIOD_TYPE","FRVP_HIGHEST_DATE","FRVP_HIGHEST_VALUE",
+                "FRVP_ROW_COUNT_AFTER_HIGHEST","FRVP_DAY_COUNT_AFTER_HIGHEST","FRVP_LATEST_CLOSE_VALUE",
+                "FRVP_POC","FRVP_VAL","FRVP_VAH",
+                "BS_OPEN_PRICE","BS_CLOSE_PRICE","BS_DIFFER","BS_PERC","BS_BAR_STATUS",
+                "EMA_END_DATE","EMA5","EMA20","EMA_STATUS","EMA_CROSS","EMA_DAYS_SINCE_CROSS",
+                "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
+                "MFI","MFI_TODAY","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
+                "VWAP_HIGHEST_VALUE","VWAP_HIGHEST_TIMESTAMP","VWAP","VOL_AVG_10DAY","VOL_AVG_20DAY","VOL_AVG_30DAY",
+                "CREATED_AT","CREATED_DAY"
+            )
+            {select_sql}
+        """
+
+        insert_log_sql = f"""
+            INSERT INTO {log_schema}."{log_table}" (
+                "EXCHANGE","SYMBOL",
+                "FRVP_INTERVAL","FRVP_PERIOD_TYPE","FRVP_HIGHEST_DATE","FRVP_HIGHEST_VALUE",
+                "FRVP_ROW_COUNT_AFTER_HIGHEST","FRVP_DAY_COUNT_AFTER_HIGHEST","FRVP_LATEST_CLOSE_VALUE",
+                "FRVP_POC","FRVP_VAL","FRVP_VAH",
+                "BS_OPEN_PRICE","BS_CLOSE_PRICE","BS_DIFFER","BS_PERC","BS_BAR_STATUS",
+                "EMA_END_DATE","EMA5","EMA20","EMA_STATUS","EMA_CROSS","EMA_DAYS_SINCE_CROSS",
+                "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
+                "MFI","MFI_TODAY","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
+                "VWAP_HIGHEST_VALUE","VWAP_HIGHEST_TIMESTAMP","VWAP","VOL_AVG_10DAY","VOL_AVG_20DAY","VOL_AVG_30DAY",
+                "CREATED_AT","CREATED_DAY"
+            )
+            {select_sql}
+        """
+
+        count_sql = text(f'SELECT COUNT(*) FROM {target_schema}."{target_table}";')
+
+        with self.engine.begin() as conn:
+            conn.execute(text(insert_master_sql), {"exchange": exchange})
+            master_count = conn.execute(count_sql).scalar() or 0
+            conn.execute(text(insert_log_sql), {"exchange": exchange})
+
+        return {
+            "master_inserted_rows": int(master_count),
+        }

@@ -58,11 +58,16 @@ def main():
         # bar status identification
         build_bar_status = True,
         bar_status_source_schema = "raw",
-        bar_status_source_table = "usa_1min_archive"
-  
+        bar_status_source_table = "usa_1min_archive",
+
+        # master combined indicator
+        run_combined_indicators=True,
+        master_ind_target_table = "USA_MASTER_COMBINED_INDICATORS",
+        master_ind_log_table = "LOG_USA_MASTER_COMBINED_INDICATORS",
+
     )
 
-    run_indicators_for_exchange(repo, "USA", flags)
+    run_indicators_for_exchange(repo=repo, exchange="USA", flags=flags)
 
 
 if __name__ == "__main__":
