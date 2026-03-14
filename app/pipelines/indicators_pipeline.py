@@ -7,11 +7,21 @@ from typing import List, Optional
 from app.infrastructure.database.repository import PostgresRepository
 from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
 from app.services.ind_ema_focus_service import IndEmaFocusService
+from app.services.ind_vwap_focus_service import IndVwapFocusService # type: ignore
+from app.services.email_service import send_email
+from app.services.ind_bar_status_service import IndBarStatusService
+from app.services.ind_rsi_focus_service import IndRsiFocusService
+from app.services.ind_mfi_focus_service import IndMfiFocusService
+from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService
+
+
+
 
 
 
 @dataclass(frozen=True)
 class IndicatorsFlags:
+
     # --------------------------------------------------
     # FRVP indicator calculation
     # --------------------------------------------------
@@ -24,7 +34,8 @@ class IndicatorsFlags:
     # True → tabloyu truncate edip yeniden üretir
     # False → mevcut veriyi bırakır (genelde test için)
 
-    periods: List[str] = None
+    periods: List[str] = ''  
+    #check below in func
     # FRVP hesaplamasında kullanılacak period listesi.
     # Örn: ["2year", "1year", "6months", "4months"]
 
@@ -37,12 +48,12 @@ class IndicatorsFlags:
     # --------------------------------------------------
     # Converted Daily dataset (EMA / RSI input dataset)
     # --------------------------------------------------
-    build_converted_daily: bool = False
+    build_converted_daily: bool = True
     # True → dakikalık veya günlük dataset'i
     # EMA/RSI hesaplamaları için günlük formata dönüştürür.
 
 
-    converted_daily_input_schema: str = "silver"
+    converted_daily_input_schema: str = ""
     # Kaynak dataset'in bulunduğu schema.
 
     converted_daily_input_table: str = ""
@@ -56,7 +67,7 @@ class IndicatorsFlags:
     # "1min"  → dakikalık veri
     # "daily" → zaten günlük veri
 
-    converted_daily_output_schema: str = "silver"
+    converted_daily_output_schema: str = ""
     # Üretilecek converted daily dataset'in schema'sı.
 
     converted_daily_output_table: str = ""
@@ -65,7 +76,7 @@ class IndicatorsFlags:
     # usa_focus_2e_indicators_converted_daily
     # bist_focus_2e_indicators_converted_daily
 
-    converted_daily_start_trading_days_back: int = 30
+    converted_daily_start_trading_days_back: int = 150
     # Son kaç trading day kullanılacağını belirler.
     # Örn: 30 → son 30 işlem günü kullanılır.
 
@@ -73,11 +84,51 @@ class IndicatorsFlags:
 
     #ema flags
     ema_calc: bool = True
-    ema_input_schema: str = ''
+    ema_input_schema: str = 'silver'
     ema_input_table: str = ''
-    ema_exchange: str = ''
-    ema_lookback_days: int = 20 #default 20 day
+    ema_calc_history_days: int= 120
+    ema_signal_lookback_days: int = 20
     ema_is_truncate_scope: bool = True
+
+    #VWAP falgs
+    build_vwap_focus: bool = True
+    vwap_source_schema: str = "silver"
+    vwap_source_table: str = ""
+    vwap_target_schema: str = "silver"
+    vwap_target_table: str = "IND_VWAP_FOCUS"
+    vwap_lookback_month: int = 4
+
+    # RSI CALC flags
+    build_rsi_focus: bool = True
+    rsi_source_schema: str = 'silver'
+    rsi_source_table: str = ''
+    rsi_calc_history_days: int = 120
+    rsi_signal_lookback_days: int = 20
+    rsi_is_truncate_scope: bool = True
+
+    # MFI CALC
+    build_mfi_focus: bool = True
+    mfi_source_schema: str = 'silver'
+    mfi_source_table: str = ''
+    mfi_calc_history_days: int = 120
+    mfi_is_truncate_scope: bool = True
+
+    #bar status identification flags
+    build_bar_status: bool = False
+    bar_status_source_schema: str = ""
+    bar_status_source_table: str = ""
+    bar_status_target_schema: str = "silver"
+    bar_status_target_table: str = "IND_BAR_STATUS"
+
+    # master combined indicator flags
+    run_combined_indicators: bool = True
+    master_ind_target_schema: str = "gold"
+    master_ind_target_table: str = ""
+    master_ind_log_schema: str = "logs"
+    master_ind_log_table: str = ""
+
+    # mail
+    mail_service:bool = False
 
 
 
@@ -100,7 +151,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         )
         svc.run(
             exchange=exchange,
-            periods=periods,
+            periods=["2year", "1year", "6months", "4months"],
             cutt_off_date=flags.cutt_off_date,
             is_truncate_scope=flags.truncate_scope,
         )
@@ -110,15 +161,15 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         )
 
         #save result into google sheet 
-        if flags.ema_exchange == 'BIST':
+        if exchange == 'BIST':
             sheet_name = "FRVP_BIST"
-        elif flags.ema_exchange == 'USA':
+        elif exchange == 'USA':
             sheet_name = "FRVP_USA"
 
         
         repo.fn_repo_write_to_google(schema='silver',
             table='IND_FRV_POC_PROFILE',
-            exchange=flags.ema_exchange,
+            exchange=exchange,
             scope_col='IN_SCOPE_FOR_EMA_RSI',
             cols=None,
             sheet_name= sheet_name,
@@ -166,7 +217,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         print(f"⏭️[IND-CONVERT] Converted-daily step skipped for exchange={exchange}", flush=True)
 
     if flags.auto_sample_run:
-        if flags.ema_exchange == 'USA':  # takes ema exchange
+        if exchange == 'USA':  # takes ema exchange
             symbols = os.getenv("USA_SAMPLE_SYMBOLS", "")
             symbols = [s.strip() for s in symbols.split(",") if s.strip()]
             print(f'[SAMPLE-USA-1MIN-CONVERTED] | Sample symbols {len(symbols)} > {symbols}')
@@ -195,13 +246,128 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
     if flags.ema_calc:
         svc = IndEmaFocusService(repo=repo)
         svc.run(
-            exchange=flags.ema_exchange,
+            exchange=exchange,
             input_schema=flags.ema_input_schema,
             input_table=flags.ema_input_table,
-            lookback_days=flags.ema_lookback_days,          # parametrik
-            is_truncate_scope=flags.ema_is_truncate_scope,    # exchange bazlı delete
+            ema_calc_history_days=flags.ema_calc_history_days,
+            ema_signal_lookback_days=flags.ema_signal_lookback_days,
+            is_truncate_scope=flags.ema_is_truncate_scope,
         )
+        
     else:
         print('⏭️[EMA] skipped!')
 
+    # ----------------------------------------------------------
+    # 4) VWAP CALC CHAPTER
+    # ----------------------------------------------------------
+    if flags.build_vwap_focus:
+        svc = IndVwapFocusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema=flags.vwap_source_schema,
+            source_table=flags.vwap_source_table,
+            target_schema=flags.vwap_target_schema,
+            target_table=flags.vwap_target_table,
+            lookback_month=flags.vwap_lookback_month,
+            is_truncate_scope=True
+        )
+    else:
+        print(f'⏭️[VWAP] skipped for exchange={exchange}')
 
+    # RSI CALC
+    if flags.build_rsi_focus:
+        svc = IndRsiFocusService(repo=repo)
+
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.rsi_source_schema,
+            input_table=flags.rsi_source_table,
+            rsi_calc_history_days=flags.rsi_calc_history_days,
+            rsi_signal_lookback_days=flags.rsi_signal_lookback_days,
+            is_truncate_scope=flags.rsi_is_truncate_scope,
+        )
+    else:
+        print(f'⏭️ [RSI] skipped for exchange={exchange}')
+
+    # MFI CALC
+    if flags.build_mfi_focus:
+        svc = IndMfiFocusService(repo=repo)
+        
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.mfi_source_schema,
+            input_table=flags.mfi_source_table,
+            mfi_calc_history_days=flags.mfi_calc_history_days,
+            is_truncate_scope=flags.mfi_is_truncate_scope,
+        )
+    else:
+        print(f'⏭️ [MFI] skipped for exchange={exchange}')
+
+
+
+    # bar status identification
+    if flags.build_bar_status:
+        svc = IndBarStatusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema=flags.bar_status_source_schema,
+            source_table=flags.bar_status_source_table,
+            target_schema=flags.bar_status_target_schema,
+            target_table=flags.bar_status_target_table,
+            is_truncate_scope=True,
+        )
+    else:
+        print(f"[IND] BAR_STATUS step skipped for exchange={exchange}")
+    
+    #####################################################################
+    #                 MASSTER COMBINED INDICATORS CALC                  #
+    #####################################################################
+
+    if flags.run_combined_indicators:
+        svc = IndMasterCombinedIndicatorsService(repo=repo)
+
+        svc.run(
+            exchange=exchange,
+            target_schema=flags.master_ind_target_schema,
+            target_table=flags.master_ind_target_table,
+            log_schema=flags.master_ind_log_schema,
+            log_table=flags.master_ind_log_table,
+
+            frvp_table="IND_FRV_POC_PROFILE",
+            bs_table="IND_BAR_STATUS",
+            ema_table="IND_EMA_FOCUS",
+            rsi_table="IND_RSI_FOCUS",
+            mfi_table="IND_MFI_FOCUS",
+            vwap_table="IND_VWAP_FOCUS",
+        )
+        #save result into google sheet 
+        if exchange == 'BIST':
+            sheet_name = "MASTER_IND_BIST"
+            table='BIST_MASTER_COMBINED_INDICATORS'
+
+        elif exchange == 'USA':
+            sheet_name = "MASTER_IND_USA"
+            table='USA_MASTER_COMBINED_INDICATORS'
+        
+        repo.fn_repo_write_to_google_generic(
+            schema='gold',
+            table=table,
+            sheet_name= sheet_name,
+            replace_append = 'replace')
+        
+    else:
+        print(f"⏭️[IND-MASTER] skipped for exchange={exchange}")
+
+
+
+
+    #e-mail
+    if flags.mail_service:
+        send_email(
+            to_email=["1irfanakgul@gmail.com"],
+            subject=f"INDICATORS-{exchange} RUN INFO",
+            body=f"[NOTIFICATION]\n \Indicators ({exchange}) has been calculated! \
+                \nFRVP:{flags.frvp},\nConvert2Daily:{flags.build_converted_daily},\
+                \nSample:{flags.auto_sample_run},\nEMA:{flags.ema_calc},\
+                \nVWAP:{flags.build_vwap_focus}\n MASTER IND:{flags.run_combined_indicators}"
+        )

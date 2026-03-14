@@ -17,31 +17,51 @@ def main():
 
     flags = IndicatorsFlags(
         #flags for FRVP/POC
-        frvp=True,
+        frvp=False,
         truncate_scope=True,
         periods=["2year", "1year", "6months", "4months"],
         cutt_off_date=None,
 
         #FLAGS: converting from min to daily for 2e indicator calc
-        build_converted_daily=True,
+        build_converted_daily=False,
         converted_daily_input_schema="silver",
         converted_daily_input_table="FRVP_BIST_FOCUS_DATASET",
         converted_daily_input_interval="daily",
         converted_daily_output_schema="silver",
         converted_daily_output_table="bist_focus_2e_indicators_converted_daily",
-        converted_daily_start_trading_days_back=30,
+        converted_daily_start_trading_days_back=130,
 
         # Flags for EMA and other 2e indicators 
         ema_calc = True, #True calc is active False: skip ema calc
-        ema_input_schema = 'silver',
         ema_input_table = 'bist_focus_2e_indicators_converted_daily',
-        ema_exchange = 'BIST',
-        ema_lookback_days = 20, #default 20 day
-        ema_is_truncate_scope = True,
+
+        # VWAP flags
+        build_vwap_focus = True,
+        vwap_source_table = "bist_focus_2e_indicators_converted_daily",
+
+        # RSI flags
+        build_rsi_focus = True,
+        rsi_source_table='bist_focus_2e_indicators_converted_daily',
+
+        # MFI FLAGS
+        build_mfi_focus = True,
+        mfi_source_table='bist_focus_2e_indicators_converted_daily',
+
+
+        # bar status identification
+        build_bar_status = True,
+        bar_status_source_schema = "raw",
+        bar_status_source_table = "bist_1min_archive",
+
+        # master combined indicator
+        run_combined_indicators=True,
+        master_ind_target_table = "BIST_MASTER_COMBINED_INDICATORS",
+        master_ind_log_table = "LOG_BIST_MASTER_COMBINED_INDICATORS",
+
     )
+    
 
-    run_indicators_for_exchange(repo, "BIST", flags)
-
+    run_indicators_for_exchange(repo=repo, exchange="BIST", flags=flags)
 
 if __name__ == "__main__":
     main()

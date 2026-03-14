@@ -8,19 +8,21 @@ from typing import List, Dict, Any
 import pandas as pd
 
 from app.infrastructure.database.repository import PostgresRepository
-from app.core.indicators.ema.ema_math import calculate_ema_cross
+from app.core.indicators.rsi.rsi_math import calculate_rsi_features
 
 
 @dataclass(frozen=True)
-class EmaServiceConfig:
-    job_name: str = "ind_ema_focus"
-    calc_group: str = "EMA"
-    calc_name: str = "EMA5_EMA20_CROSS"
+class RsiServiceConfig:
+    job_name: str = "ind_rsi_focus"
+    calc_group: str = "RSI"
+    calc_name: str = "RSI14_RSI_MA14_CROSS"
     price_col: str = "CLOSE"
+    rsi_length: int = 14
+    ma_length: int = 14
 
 
-class IndEmaFocusService:
-    def __init__(self, repo: PostgresRepository, cfg: EmaServiceConfig = EmaServiceConfig()):
+class IndRsiFocusService:
+    def __init__(self, repo: PostgresRepository, cfg: RsiServiceConfig = RsiServiceConfig()):
         self.repo = repo
         self.cfg = cfg
 
@@ -29,47 +31,47 @@ class IndEmaFocusService:
         exchange: str,
         input_schema: str,
         input_table: str,
-        ema_calc_history_days: int = 120,
-        ema_signal_lookback_days: int = 20,
+        rsi_calc_history_days: int = 120,
+        rsi_signal_lookback_days: int = 20,
         is_truncate_scope: bool = True,
     ) -> None:
-        """
-        Flow:
-        1) Read EMA scope symbols from silver.IND_FRV_POC_PROFILE where IN_SCOPE_FOR_EMA_RSI = True
-        2) Fetch last ema_calc_history_days daily rows for all those symbols
-        3) Apply legacy EMA math exactly
-        4) Restrict final outputs to latest row per symbol
-        5) Write to silver.IND_EMA_FOCUS after exchange-based delete
-        """
         exchange = exchange.upper().strip()
+
+        # Defensive normalization
+        if isinstance(rsi_calc_history_days, tuple):
+            rsi_calc_history_days = int(rsi_calc_history_days[0])
+        if isinstance(rsi_signal_lookback_days, tuple):
+            rsi_signal_lookback_days = int(rsi_signal_lookback_days[0])
+
+        rsi_calc_history_days = int(rsi_calc_history_days)
+        rsi_signal_lookback_days = int(rsi_signal_lookback_days)
 
         symbols = self.repo.get_ema_focus_symbols(exchange=exchange)
         if not symbols:
-            print(f"[EMA] No in-scope symbols found. exchange={exchange}")
+            print(f"[RSI] No in-scope symbols found. exchange={exchange}")
             return
 
         if is_truncate_scope:
-            deleted = self.repo.delete_ind_ema_scope(exchange=exchange)
-            print(f"[EMA] Cleared output scope: exchange={exchange} deleted_rows={deleted}")
+            deleted = self.repo.delete_ind_rsi_scope(exchange=exchange)
+            print(f"[RSI] Cleared output scope: exchange={exchange} deleted_rows={deleted}")
 
-        # Fetch enough history so EMA20 matches legacy pandas better
         rows = self.repo.fetch_last_n_days_close_for_symbols(
             schema=input_schema,
             table=input_table,
             exchange=exchange,
             symbols=symbols,
-            n_days=ema_calc_history_days,
+            n_days=rsi_calc_history_days,
             ts_col="TIMESTAMP",
             close_col=self.cfg.price_col,
         )
 
         if not rows:
-            print(f"[EMA] No input rows returned. exchange={exchange}")
+            print(f"[RSI] No input rows returned. exchange={exchange}")
             return
 
         df = pd.DataFrame(rows)
         if df.empty:
-            print(f"[EMA] Input dataframe empty. exchange={exchange}")
+            print(f"[RSI] Input dataframe empty. exchange={exchange}")
             return
 
         df["TIMESTAMP"] = pd.to_datetime(df["TIMESTAMP"], errors="coerce")
@@ -77,16 +79,18 @@ class IndEmaFocusService:
         df = df.dropna(subset=["SYMBOL", "TIMESTAMP", self.cfg.price_col])
 
         if df.empty:
-            print(f"[EMA] Input dataframe became empty after cleaning. exchange={exchange}")
+            print(f"[RSI] Input dataframe became empty after cleaning. exchange={exchange}")
             return
 
         df = df.sort_values(["SYMBOL", "TIMESTAMP"]).reset_index(drop=True)
 
         try:
-            df_result = calculate_ema_cross(
+            df_result = calculate_rsi_features(
                 df=df,
+                rsi_length=self.cfg.rsi_length,
+                ma_length=self.cfg.ma_length,
                 price_col=self.cfg.price_col,
-                signal_lookback_days=ema_signal_lookback_days,
+                signal_lookback_days=rsi_signal_lookback_days,
             )
         except Exception as e:
             self.repo.log_indicator_error(
@@ -104,13 +108,13 @@ class IndEmaFocusService:
             raise
 
         if "SYMBOL" not in df_result.columns:
-            raise ValueError(f"EMA result missing SYMBOL column. Columns={list(df_result.columns)}")
+            raise ValueError(f"RSI result missing SYMBOL column. Columns={list(df_result.columns)}")
 
         if "TIMESTAMP" not in df_result.columns:
-            raise ValueError(f"EMA result missing TIMESTAMP column. Columns={list(df_result.columns)}")
+            raise ValueError(f"RSI result missing TIMESTAMP column. Columns={list(df_result.columns)}")
 
         if df_result.empty:
-            print(f"[EMA] No EMA result rows after calculation. exchange={exchange}")
+            print(f"[RSI] No RSI result rows after calculation. exchange={exchange}")
             return
 
         # Keep only latest row per symbol
@@ -133,14 +137,17 @@ class IndEmaFocusService:
                     "EXCHANGE": exchange,
                     "SYMBOL": str(row["SYMBOL"]),
                     "END_DATE": pd.to_datetime(row["TIMESTAMP"]).to_pydatetime(),
-                    "EMA5": float(row["EMA5"]) if pd.notna(row["EMA5"]) else None,
-                    "EMA20": float(row["EMA20"]) if pd.notna(row["EMA20"]) else None,
-                    "EMA_STATUS": int(row["EMA_Status"]) if pd.notna(row["EMA_Status"]) else None,
-                    "EMA_CROSS": int(row["EMA_Cross"]) if pd.notna(row["EMA_Cross"]) else None,
-                    "DAYS_SINCE_CROSS": int(row["DAYS_SINCE_CROSS"]) if pd.notna(row["DAYS_SINCE_CROSS"]) else None,
+
+                    "RSI": float(row["RSI"]) if pd.notna(row["RSI"]) else None,
+                    "RSI_MA": float(row["RSI_MA"]) if pd.notna(row["RSI_MA"]) else None,
+                    "RSI_STATUS": int(row["RSI_Status"]) if pd.notna(row["RSI_Status"]) else None,
+                    "RSI_CROSS": int(row["RSI_Cross"]) if pd.notna(row["RSI_Cross"]) else None,
+                    "RSI_CROSS_DAYS_AGO": int(row["RSI_Cross_Days_Ago"]) if pd.notna(row["RSI_Cross_Days_Ago"]) else None,
+
                     "CREATED_AT": created_at,
                 })
                 computed_symbols += 1
+
             except Exception as e:
                 self.repo.log_indicator_error(
                     job_name=self.cfg.job_name,
@@ -155,13 +162,13 @@ class IndEmaFocusService:
                     error_stack=traceback.format_exc(),
                 )
 
-        inserted = self.repo.insert_ind_ema_focus_rows(out_rows)
+        inserted = self.repo.insert_ind_rsi_focus_rows(out_rows)
 
         print(
-            f"[EMA] exchange={exchange} "
+            f"[RSI] exchange={exchange} "
             f"symbols_in_scope={total_scope} "
-            f"history_days={ema_calc_history_days} "
-            f"signal_lookback_days={ema_signal_lookback_days} "
+            f"history_days={rsi_calc_history_days} "
+            f"signal_lookback_days={rsi_signal_lookback_days} "
             f"computed_symbols={computed_symbols} "
             f"inserted={inserted}"
         )

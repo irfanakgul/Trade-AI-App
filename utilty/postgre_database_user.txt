@@ -1,0 +1,37 @@
+# giris terminalden
+sudo -u postgres psql -d trade_app
+
+# sifre isteyecek. root sifresi
+
+#kullanici olustur
+CREATE USER user_yakup WITH PASSWORD 'yakup@2026';
+
+#dbye baglanti izni
+GRANT CONNECT ON DATABASE trade_app TO user_yakup;
+
+#schemaya erisim izni (read icin gerekli)
+GRANT USAGE ON SCHEMA bronze TO user_yakup;
+
+#schema read yetkisi
+GRANT SELECT ON ALL TABLES IN SCHEMA bronze TO user_yakup;
+
+# schema write yetkisi
+GRANT INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA test TO user_yakup;
+GRANT CREATE ON SCHEMA test TO user_yakup;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA test TO user_yakup;
+
+#yeni tablolar icin oto yetki
+ALTER DEFAULT PRIVILEGES IN SCHEMA test GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON TABLES TO user_yakup;
+ALTER DEFAULT PRIVILEGES IN SCHEMA bronze GRANT SELECT ON TABLES TO user_yakup;
+ALTER DEFAULT PRIVILEGES IN SCHEMA silver GRANT SELECT ON TABLES TO user_yakup;
+ALTER DEFAULT PRIVILEGES IN SCHEMA gold GRANT SELECT ON TABLES TO user_yakup;
+ALTER DEFAULT PRIVILEGES IN SCHEMA prod GRANT SELECT ON TABLES TO user_yakup;
+ALTER DEFAULT PRIVILEGES IN SCHEMA test GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO user_yakup;
+
+#cikis
+\q
+
+
+
+
+

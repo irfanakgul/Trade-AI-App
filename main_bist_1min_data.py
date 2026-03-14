@@ -17,7 +17,6 @@ async def main():
     flags = BistDataPipelineFlags(
         ingest=True,
         fallback=True,
-        use_db_last_timestamp=True,
         sync_archive_to_working=False,
         trim365=False,
         build_focus_dataset=False,

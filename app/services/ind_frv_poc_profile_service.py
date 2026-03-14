@@ -47,16 +47,15 @@ class IndFrvPocProfileService:
             print(f"[FRVP] No valid periods provided. exchange={exchange}")
             return
 
-        if is_truncate_scope:
-            deleted = self.repo.delete_ind_frvp_scope(
-                exchange=exchange,
-                interval=self.cfg.interval,
-                periods=periods_sorted,
-            )
-            print(
-                f"[FRVP] Scope cleaned: exchange={exchange} interval={self.cfg.interval} "
-                f"deleted_rows={deleted}"
-            )
+        deleted = self.repo.delete_ind_frvp_scope(
+            exchange=exchange,
+            interval=self.cfg.interval,
+            periods=periods_sorted,
+        )
+        print(
+            f"[FRVP] Scope cleaned: exchange={exchange} interval={self.cfg.interval} "
+            f"deleted_rows={deleted}"
+        )
 
         source_table = "FRVP_USA_FOCUS_DATASET" if exchange == "USA" else "FRVP_BIST_FOCUS_DATASET"
 
@@ -225,7 +224,7 @@ class IndFrvPocProfileService:
         print(
             f"[FRVP {exchange} {idx}/{total}] {symbol}: inserted_rows={inserted} "
             f"base_period={base_period} short={len(short_periods)} copied={copied_cnt}"
-        )
+            )
 
     def _compute_period_row(
         self,
