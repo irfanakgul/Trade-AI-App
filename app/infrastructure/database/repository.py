@@ -2376,8 +2376,8 @@ class PostgresRepository:
                 vwap."AVG_VOLUME_20D" AS "VOL_AVG_20DAY",
                 vwap."AVG_VOLUME_30D" AS "VOL_AVG_30DAY",
 
-                CURRENT_TIMESTAMP AS "CREATED_AT",
-                {created_day_expr} AS "CREATED_DAY"
+                CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS "CREATED_AT",
+                TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY') AS "CREATED_DAY"
 
             FROM silver."{frvp_table}" frvp
             LEFT JOIN silver."{bs_table}" bs
