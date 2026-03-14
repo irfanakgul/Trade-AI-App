@@ -23,24 +23,20 @@ def main():
     flags = IndicatorsFlags(
 
         # --- FRVP ---
-        frvp=False,
+        frvp=True,
 
         # --- Converted Daily (for EMA/RSI input) ---
-        build_converted_daily=False, #should be true to generate sample data based on converted 1min data
-        converted_daily_input_schema="silver",
+        build_converted_daily=True, #should be true to generate sample data based on converted 1min data
         converted_daily_input_table="FRVP_USA_FOCUS_DATASET",
         converted_daily_input_interval="1min",
-        converted_daily_output_schema="silver",
         converted_daily_output_table="usa_focus_2e_indicators_converted_daily",
-        converted_daily_start_trading_days_back=150,
 
 
         # auto sample genarete on converted daily
-        auto_sample_run = False, #use ema_exchange for exchange
+        auto_sample_run = True, #use ema_exchange for exchange
 
         #ema usa flags
         ema_calc = True,
-        ema_input_schema = 'silver',
         ema_input_table = 'usa_focus_2e_indicators_converted_daily',
 
         # VWAP flags
@@ -57,7 +53,6 @@ def main():
 
         # bar status identification
         build_bar_status = True,
-        bar_status_source_schema = "raw",
         bar_status_source_table = "usa_1min_archive",
 
         # master combined indicator

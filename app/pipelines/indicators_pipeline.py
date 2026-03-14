@@ -16,9 +16,6 @@ from app.services.ind_master_combined_indicators_service import IndMasterCombine
 
 
 
-
-
-
 @dataclass(frozen=True)
 class IndicatorsFlags:
 
@@ -53,7 +50,7 @@ class IndicatorsFlags:
     # EMA/RSI hesaplamaları için günlük formata dönüştürür.
 
 
-    converted_daily_input_schema: str = ""
+    converted_daily_input_schema: str = "silver"
     # Kaynak dataset'in bulunduğu schema.
 
     converted_daily_input_table: str = ""
@@ -67,7 +64,7 @@ class IndicatorsFlags:
     # "1min"  → dakikalık veri
     # "daily" → zaten günlük veri
 
-    converted_daily_output_schema: str = ""
+    converted_daily_output_schema: str = "silver"
     # Üretilecek converted daily dataset'in schema'sı.
 
     converted_daily_output_table: str = ""
@@ -76,7 +73,7 @@ class IndicatorsFlags:
     # usa_focus_2e_indicators_converted_daily
     # bist_focus_2e_indicators_converted_daily
 
-    converted_daily_start_trading_days_back: int = 150
+    converted_daily_start_trading_days_back: int = 130
     # Son kaç trading day kullanılacağını belirler.
     # Örn: 30 → son 30 işlem günü kullanılır.
 
@@ -115,7 +112,7 @@ class IndicatorsFlags:
 
     #bar status identification flags
     build_bar_status: bool = False
-    bar_status_source_schema: str = ""
+    bar_status_source_schema: str = "raw"
     bar_status_source_table: str = ""
     bar_status_target_schema: str = "silver"
     bar_status_target_table: str = "IND_BAR_STATUS"
@@ -128,7 +125,7 @@ class IndicatorsFlags:
     master_ind_log_table: str = ""
 
     # mail
-    mail_service:bool = False
+    mail_service:bool = True
 
 
 
@@ -146,7 +143,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         svc = IndFrvPocProfileService(repo=repo)
 
         print(
-            f"\n[IND-FRVP]  FRVP/POC/VAL/VAH started ({exchange})... "
+            f"\n[IND-FRVP] FRVP/POC/VAL/VAH started ({exchange})... "
             f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
         )
         svc.run(
@@ -355,13 +352,14 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
             sheet_name= sheet_name,
             replace_append = 'replace')
         
+        print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
+
+        
     else:
         print(f"⏭️[IND-MASTER] skipped for exchange={exchange}")
 
 
-
-
-    #e-mail
+    #e-mail service
     if flags.mail_service:
         send_email(
             to_email=["1irfanakgul@gmail.com"],

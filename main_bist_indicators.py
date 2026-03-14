@@ -17,19 +17,13 @@ def main():
 
     flags = IndicatorsFlags(
         #flags for FRVP/POC
-        frvp=False,
-        truncate_scope=True,
-        periods=["2year", "1year", "6months", "4months"],
-        cutt_off_date=None,
+        frvp=True,
 
         #FLAGS: converting from min to daily for 2e indicator calc
-        build_converted_daily=False,
-        converted_daily_input_schema="silver",
+        build_converted_daily=True,
         converted_daily_input_table="FRVP_BIST_FOCUS_DATASET",
         converted_daily_input_interval="daily",
-        converted_daily_output_schema="silver",
         converted_daily_output_table="bist_focus_2e_indicators_converted_daily",
-        converted_daily_start_trading_days_back=130,
 
         # Flags for EMA and other 2e indicators 
         ema_calc = True, #True calc is active False: skip ema calc
@@ -50,7 +44,6 @@ def main():
 
         # bar status identification
         build_bar_status = True,
-        bar_status_source_schema = "raw",
         bar_status_source_table = "bist_1min_archive",
 
         # master combined indicator
@@ -60,7 +53,6 @@ def main():
 
     )
     
-
     run_indicators_for_exchange(repo=repo, exchange="BIST", flags=flags)
 
 if __name__ == "__main__":
