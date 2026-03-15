@@ -7,7 +7,7 @@ jobs:
     # daily calculations (raw+working+trim+focus)
   - name: bist_daily_calc
     run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
-    at: "01:38"
+    at: "23:15"
     cmd: ".venv/bin/python -u main_bist_daily_data.py"
     lock: "bist_daily_calc"
 

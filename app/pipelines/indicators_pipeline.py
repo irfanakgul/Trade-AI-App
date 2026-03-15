@@ -9,10 +9,10 @@ from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
 from app.services.ind_ema_focus_service import IndEmaFocusService
 from app.services.ind_vwap_focus_service import IndVwapFocusService # type: ignore
 from app.services.email_service import send_email
-from app.services.ind_bar_status_service import IndBarStatusService
-from app.services.ind_rsi_focus_service import IndRsiFocusService
-from app.services.ind_mfi_focus_service import IndMfiFocusService
-from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService
+from app.services.ind_bar_status_service import IndBarStatusService # type: ignore
+from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore # type: ignore
+from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
+from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
 
 
@@ -133,8 +133,22 @@ class IndicatorsFlags:
 def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: IndicatorsFlags) -> None:
     exchange = exchange.upper().strip()
 
-    # Resolve periods once
-    periods = flags.periods if flags.periods is not None else ["2year", "1year", "6months", "4months"]
+    # bar status identification
+    if flags.build_bar_status:
+        svc = IndBarStatusService(repo=repo)
+        svc.run(
+            exchange = exchange,
+            source_schema=flags.bar_status_source_schema,
+            source_table=flags.bar_status_source_table,
+            target_schema=flags.bar_status_target_schema,
+            target_table=flags.bar_status_target_table,
+            is_truncate_scope=True,
+        )
+    else:
+        print(f"[IND] BAR_STATUS step skipped for exchange={exchange}")
+
+    # # Resolve periods once
+    # periods = flags.periods if flags.periods is not None else ["2year", "1year", "6months", "4months"]
 
     # ----------------------------------------------------------
     # 1) FRVP (optional)
