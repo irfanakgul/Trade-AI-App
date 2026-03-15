@@ -27,24 +27,20 @@ def main():
 
         # --- Converted Daily (for EMA/RSI input) ---
         build_converted_daily=False, #should be true to generate sample data based on converted 1min data
-        converted_daily_input_schema="silver",
         converted_daily_input_table="FRVP_USA_FOCUS_DATASET",
         converted_daily_input_interval="1min",
-        converted_daily_output_schema="silver",
         converted_daily_output_table="usa_focus_2e_indicators_converted_daily",
-        converted_daily_start_trading_days_back=150,
 
 
         # auto sample genarete on converted daily
         auto_sample_run = False, #use ema_exchange for exchange
 
         #ema usa flags
-        ema_calc = True,
-        ema_input_schema = 'silver',
+        ema_calc = False,
         ema_input_table = 'usa_focus_2e_indicators_converted_daily',
 
         # VWAP flags
-        build_vwap_focus = True,
+        build_vwap_focus = False,
         vwap_source_table = "usa_focus_2e_indicators_converted_daily",
 
         # RSI flags
@@ -52,16 +48,15 @@ def main():
         rsi_source_table='usa_focus_2e_indicators_converted_daily',
 
         # MFI FLAGS
-        build_mfi_focus = True,
+        build_mfi_focus = False,
         mfi_source_table='usa_focus_2e_indicators_converted_daily',
 
         # bar status identification
         build_bar_status = True,
-        bar_status_source_schema = "raw",
         bar_status_source_table = "usa_1min_archive",
 
         # master combined indicator
-        run_combined_indicators=True,
+        run_combined_indicators=False,
         master_ind_target_table = "USA_MASTER_COMBINED_INDICATORS",
         master_ind_log_table = "LOG_USA_MASTER_COMBINED_INDICATORS",
 
