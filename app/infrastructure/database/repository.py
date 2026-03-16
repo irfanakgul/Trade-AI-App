@@ -1321,159 +1321,6 @@ class PostgresRepository:
             "after_rows": int(after_rows),
             "target": f'{target_schema}.{target_table}',
         }
-    
-    ####################### DATA QUALITY CHECK   ##############################
-    def clear_dq_for_exchange(
-        self,
-        *,
-        schema: str,
-        table: str,
-        exchange: str,
-    ) -> int:
-        """
-        Deletes DQ log rows for a specific exchange only.
-        Returns deleted row count (best-effort).
-        """
-        q = text(f'''
-            DELETE FROM {schema}."{table}"
-            WHERE "EXCHANGE" = :exchange;
-        ''')
-        with self.engine.begin() as conn:
-            res = conn.execute(q, {"exchange": exchange})
-            # rowcount is supported for DELETE in psycopg
-            return int(res.rowcount or 0)
-
-    def bulk_insert_rows(self, schema: str, table: str, rows: List[Dict[str, Any]]) -> int:
-        """
-        Bulk insert rows using executemany.
-
-        Notes:
-        - If a column is JSONB (e.g., SAMPLE_KEYS), pass it as a JSON string and CAST in SQL.
-        """
-        if not rows:
-            return 0
-
-        cols = list(rows[0].keys())
-
-        # Build column list
-        col_list = ", ".join([f'"{c}"' for c in cols])
-
-        # Build values list with JSONB casting for SAMPLE_KEYS
-        values_sql_parts: List[str] = []
-        for c in cols:
-            if c == "SAMPLE_KEYS":
-                values_sql_parts.append("CAST(:SAMPLE_KEYS AS jsonb)")
-            else:
-                values_sql_parts.append(f":{c}")
-        val_list = ", ".join(values_sql_parts)
-
-        q = text(f'INSERT INTO {schema}."{table}" ({col_list}) VALUES ({val_list});')
-
-        # Normalize JSON-ish values (dict/list) -> JSON string
-        normalized: List[Dict[str, Any]] = []
-        for r in rows:
-            rr = dict(r)
-            if "SAMPLE_KEYS" in rr and rr["SAMPLE_KEYS"] is not None:
-                if isinstance(rr["SAMPLE_KEYS"], (dict, list)):
-                    rr["SAMPLE_KEYS"] = json.dumps(rr["SAMPLE_KEYS"], ensure_ascii=False)
-                else:
-                    # If it's already a string (or jsonb from DB driver), keep as-is
-                    rr["SAMPLE_KEYS"] = str(rr["SAMPLE_KEYS"])
-            normalized.append(rr)
-
-        with self.engine.begin() as conn:
-            conn.execute(q, normalized)
-
-        return len(normalized)
-    
-    def ensure_dq_status_column_on_poc_profile(self) -> None:
-        """
-        Ensures DQ_STATUS column exists on silver.FRVP_FOCUS_SYMBOL_LIST.
-        """
-        q = text("""
-            ALTER TABLE silver."FRVP_FOCUS_SYMBOL_LIST"
-            ADD COLUMN IF NOT EXISTS "DQ_STATUS" TEXT DEFAULT 'PASSED';
-        """)
-        with self.engine.begin() as conn:
-            conn.execute(q)
-
-    def apply_dq_to_poc_profile(self, reset_in_scope: bool = True) -> None:
-        """
-        Applies DQ results from logs.DQ_generic_check to silver.FRVP_FOCUS_SYMBOL_LIST.
-
-        - FAILED symbols:
-            IN_SCOPE_FOR_EMA_RSI = FALSE
-            DQ_STATUS = FAILED_<CHECK_TYPE>|FAILED_<CHECK_TYPE>
-        - PASSED symbols:
-            DQ_STATUS = PASSED
-        """
-
-        self.ensure_dq_status_column_on_poc_profile()
-
-        with self.engine.begin() as conn:
-
-            # Reset DQ_STATUS
-            conn.execute(text("""
-                UPDATE silver."FRVP_FOCUS_SYMBOL_LIST"
-                SET "DQ_STATUS" = 'PASSED';
-            """))
-
-            if reset_in_scope:
-                conn.execute(text("""
-                    UPDATE silver."FRVP_FOCUS_SYMBOL_LIST"
-                    SET "IN_SCOPE" = TRUE;
-                """))
-
-            # Apply FAIL results
-            conn.execute(text("""
-                WITH failed AS (
-                    SELECT
-                        "SYMBOL" AS symbol,
-                        string_agg(
-                            DISTINCT ('FAILED_' || "CHECK_TYPE"),
-                            '|' ORDER BY ('FAILED_' || "CHECK_TYPE")
-                        ) AS dq_status
-                    FROM logs."DQ_generic_check"
-                    WHERE "STATUS" = 'FAIL'
-                    GROUP BY "SYMBOL"
-                )
-                UPDATE silver."FRVP_FOCUS_SYMBOL_LIST" p
-                SET "IN_SCOPE" = FALSE,
-                    "DQ_STATUS" = f.dq_status
-                FROM failed f
-                WHERE p."SYMBOL" = f.symbol;
-            """))
-
-            # ---------------------------------------------------
-            # Stats
-            # ---------------------------------------------------
-
-            failed_count_usa = conn.execute(text("""
-                SELECT COUNT(DISTINCT "SYMBOL")
-                FROM logs."DQ_generic_check"
-                WHERE "STATUS"='FAIL' AND "EXCHANGE"='USA'
-            """)).scalar()
-
-            failed_count_bist = conn.execute(text("""
-                SELECT COUNT(DISTINCT "SYMBOL")
-                FROM logs."DQ_generic_check"
-                WHERE "STATUS"='FAIL' AND "EXCHANGE"='BIST'
-            """)).scalar()
-
-            remaining_scope_usa = conn.execute(text("""
-                SELECT COUNT(DISTINCT "SYMBOL")
-                FROM silver."FRVP_FOCUS_SYMBOL_LIST"
-                WHERE "EXCHANGE"= 'USA' AND "IN_SCOPE" = TRUE
-            """)).scalar()
-
-            remaining_scope_bist = conn.execute(text("""
-                SELECT COUNT(DISTINCT "SYMBOL")
-                FROM silver."FRVP_FOCUS_SYMBOL_LIST"
-                WHERE "EXCHANGE"= 'BIST' AND "IN_SCOPE" = TRUE
-            """)).scalar()
-
-        print(f"[DQ] FAILED SYMBOL COUNT | USA = {failed_count_usa} | BIST = {failed_count_bist}")
-        print(f"[DQ] After excluding failed DQ, USA UNIQUE SYMBOL COUNT = {remaining_scope_usa} | BIST UNIQUE SYMBOL COUNT = {remaining_scope_bist} ")
 
     ########### EMA CALC CHAPTER #########
     def get_ema_focus_symbols(self, exchange: str) -> list[str]:
@@ -2294,7 +2141,6 @@ class PostgresRepository:
     # MASTER COMBINED INDICATORS
     ###########################################
 
-
     def truncate_table(self, schema: str, table: str) -> None:
         q = text(f'TRUNCATE TABLE {schema}."{table}";')
         with self.engine.begin() as conn:
@@ -2441,3 +2287,38 @@ class PostgresRepository:
         return {
             "master_inserted_rows": int(master_count),
         }
+    
+    #########################################################
+    # Data Quality Checks                                   #
+    #########################################################
+
+    def get_next_dq_run_id(self) -> int:
+        q = text("SELECT nextval('logs.dq_run_id_seq');")
+        with self.engine.begin() as conn:
+            return int(conn.execute(q).scalar_one())
+
+    def truncate_table(self, schema: str, table: str) -> None:
+        q = text(f'TRUNCATE TABLE {schema}."{table}";')
+        with self.engine.begin() as conn:
+            conn.execute(q)
+
+    def archive_dq_rows(self, active_table: str) -> int:
+        """
+        Appends all rows from logs.<active_table> into logs.log_dq_check.
+        """
+        q = text(f'''
+            INSERT INTO logs."log_dq_check"
+            SELECT * FROM logs."{active_table}";
+        ''')
+        with self.engine.begin() as conn:
+            res = conn.execute(q)
+            return int(res.rowcount or 0)
+
+    def count_distinct_failed_symbols(self, active_table: str) -> int:
+        q = text(f'''
+            SELECT COUNT(DISTINCT "SYMBOL")
+            FROM logs."{active_table}"
+            WHERE "STATUS" = 'FAILED';
+        ''')
+        with self.engine.begin() as conn:
+            return int(conn.execute(q).scalar_one() or 0)

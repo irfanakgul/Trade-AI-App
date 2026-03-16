@@ -15,13 +15,13 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistDataPipelineFlags(
-        ingest=True,
-        fallback=True,
+        ingest=False,
+        fallback=False,
         sync_archive_to_working=False,
         trim365=False,
         build_focus_dataset=False,
-        auto_sample_run = True,
-        dq = False,
+        auto_sample_run = False,
+        dq = True,
         apply_dq_out_scope = False # dq failed symbols will be out of scope for ema and further.False include, True exclude
     )
 
