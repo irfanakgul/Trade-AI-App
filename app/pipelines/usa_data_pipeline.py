@@ -1,22 +1,16 @@
 import os
 from dataclasses import dataclass
 from typing import Optional
-
+from datetime import date
+from app.services.dq_v2_service import DQV2Service, DQRunConfig, DQTableConfig
 from app.infrastructure.api_clients.polygon_provider import PolygonProvider
 from app.services.usa_historical_ingestion_service import UsaHistoricalIngestionService
-
 from app.infrastructure.api_clients.twelvedata_provider import TwelveDataProvider, TwelveDataConfig
 from app.services.usa_historical_fallback_service import UsaHistoricalFallbackService
-
 from app.infrastructure.api_clients.yahooquery_usa_provider import YahooQueryUsaProvider
 from app.services.usa_historical_yahoo_fallback_service import UsaHistoricalYahooFallbackService
-
 from app.infrastructure.database.repository import PostgresRepository
 from datetime import datetime
-
-from app.services.dq_generic_service import DQGenericService, DQConfig # type: ignore
-import uuid
-
 
 @dataclass(frozen=True)
 class UsaDataPipelineFlags:
@@ -208,11 +202,6 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
     )
     print(f"\n[USA] Final remaining failed symbols in logs: {len(final_failed)}\n")
 
-    print(
-        f"\n[USA] Data pipeline finished. "
-        f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n"
-    )
-
     # ----------------------------------------------------------
     # 6) SAMPLE AUTO DATASET
     # ----------------------------------------------------------
@@ -239,27 +228,80 @@ async def run_usa_data_pipeline(repo: PostgresRepository, flags: UsaDataPipeline
     # 7) DQ CHECKS
     # ----------------------------------------------------------
     if flags.dq:
-        run_id = uuid.uuid4()
-        deleted = repo.clear_dq_for_exchange(schema="logs", table="DQ_generic_check", exchange="USA")
-        print(f"[DQ] cleared previous DQ logs for USA. deleted_rows={deleted}")
+        print("[USA-DQ] starting...")
 
+        dq = DQV2Service(repo)
 
-        dq = DQGenericService(repo=repo, config=DQConfig(job_name="usa_daily_data_pipeline"))
-        dq.truncate_logs()
-
-        cols = ["SYMBOL", "TIMESTAMP", "OPEN", "LOW", "HIGH", "CLOSE", "VOLUME"]
-
-        # BIST focus
-        dq.run_for_table(
-            run_id=run_id,
-            exchange="USA",
-            schema="silver",
-            table="FRVP_USA_FOCUS_DATASET",
-            interval="1min",
-            ts_col="TS",  # if exists; otherwise "TIMESTAMP"
-            columns=cols,
+        usa_dq_run_cfg = DQRunConfig(
+            job_name="usa_1min_data_pipeline",
+            active_table="usa_dq_check",
+            specific_trading_calendar=False,   # later True when calendar table is ready
+            known_holidays=(),                 # later fill for USA holidays
+            as_of_date=date.today(),
         )
-        print(f"[DQ - USA] Completed. run_id={run_id}")
-        
-        if flags.apply_dq_out_scope:
-            repo.apply_dq_to_poc_profile(reset_in_scope=True)  # or False if you don't want to reset IN_SCOPE# or False if you don't want to reset IN_SCOPE
+
+        usa_tables = [
+            DQTableConfig(
+                exchange="USA",
+                schema_name="raw",
+                table_name="usa_1min_archive",
+                interval="1min",
+                ts_col="TS",
+                timestamp_col="TIMESTAMP",
+                symbol_col="SYMBOL",
+                row_id_col="ROW_ID",
+                expected_close_hour=23,        # change if your market-close convention differs
+                expected_close_minute=59,
+                end_tolerance_minutes=60,
+                bar_threshold=360,
+                checks=(
+                    "END_DATE_CHECK",
+                    "NULL_CHECK",
+                    "DUPLICATE_CHECK",
+                    "BAR_CHECK",
+                ),
+            ),
+            DQTableConfig(
+                exchange="USA",
+                schema_name="bronze",
+                table_name="usa_1min_high_filtered",
+                interval="1min",
+                ts_col="TS",
+                timestamp_col="TIMESTAMP",
+                symbol_col="SYMBOL",
+                row_id_col="ROW_ID",
+                expected_close_hour=23,
+                expected_close_minute=59,
+                end_tolerance_minutes=60,
+                bar_threshold=360,
+                checks=(
+                    "END_DATE_CHECK",
+                    "NULL_CHECK",
+                    "DUPLICATE_CHECK",
+                    "BAR_CHECK",
+                ),
+            ),
+            DQTableConfig(
+                exchange="USA",
+                schema_name="silver",
+                table_name="FRVP_USA_FOCUS_DATASET",
+                interval="1min",
+                ts_col="TS",
+                timestamp_col="TIMESTAMP",
+                symbol_col="SYMBOL",
+                row_id_col="ROW_ID",
+                expected_close_hour=23,
+                expected_close_minute=59,
+                end_tolerance_minutes=60,
+                bar_threshold=360,
+                checks=(
+                    "END_DATE_CHECK",
+                    "NULL_CHECK",
+                    "DUPLICATE_CHECK",
+                    "BAR_CHECK",
+                ),
+            ),
+        ]
+
+        usa_dq_run_id = dq.run_exchange_checks(usa_dq_run_cfg, usa_tables)
+        print(f"[USA-DQ] completed. DQ_RUN_ID={usa_dq_run_id}")

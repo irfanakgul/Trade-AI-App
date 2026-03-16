@@ -16,13 +16,13 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistDailyDataPipelineFlags(
-        ingest=True,
-        fallback=True,
-        sync_archive_to_working=True,
-        trim365=True,
-        build_focus_dataset=True,
-        use_db_last_timestamp=True,
-        auto_sample_run = True,
+        ingest=False,
+        fallback=False,
+        sync_archive_to_working=False,
+        trim365=False,
+        build_focus_dataset=False,
+        use_db_last_timestamp=False,
+        auto_sample_run = False,
         dq = True,
     )
 

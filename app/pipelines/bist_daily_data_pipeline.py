@@ -4,8 +4,8 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
-import uuid
-from app.services.dq_generic_service import DQGenericService, DQConfig # type: ignore
+from datetime import date
+from app.services.dq_v2_service import DQV2Service, DQRunConfig, DQTableConfig
 
 from app.infrastructure.database.repository import PostgresRepository
 
@@ -279,29 +279,45 @@ async def run_bist_daily_data_pipeline(repo: PostgresRepository, flags: BistDail
     # 7) DQ CHECKS
     # ----------------------------------------------------------
     if flags.dq:
-        run_id = uuid.uuid4()
-        
-        deleted = repo.clear_dq_for_exchange(schema="logs", table="DQ_generic_check", exchange="BIST")
-        print(f"[DQ] cleared previous DQ logs for BIST. deleted_rows={deleted}")
+        dq = DQV2Service(repo)
 
-        dq = DQGenericService(repo=repo, config=DQConfig(job_name="bist_daily_data_pipeline"))
-        dq.truncate_logs()
-
-        cols = ["SYMBOL", "TIMESTAMP", "OPEN", "LOW", "HIGH", "CLOSE", "VOLUME"]
-
-        # BIST focus
-        dq.run_for_table(
-            run_id=run_id,
-            exchange="BIST",
-            schema="silver",
-            table="FRVP_BIST_FOCUS_DATASET",
-            interval="daily",
-            ts_col="TS",  # if exists; otherwise "TIMESTAMP"
-            columns=cols,
+        dq_run_cfg = DQRunConfig(
+            job_name="bist_daily_data_pipeline",
+            active_table="bist_dq_check",
+            specific_trading_calendar=False,
+            known_holidays=(),   # later you can fill
+            as_of_date=date.today(),
         )
-        print(f"[DQ - BIST] Completed. run_id={run_id}")
-        
-        if flags.apply_dq_out_scope:
-            repo.apply_dq_to_poc_profile(reset_in_scope=True)  # or False if you don't want to reset IN_SCOPE  # or False if you don't want to reset IN_SCOPE
+
+        table_cfgs = [
+            DQTableConfig(
+                exchange="BIST",
+                schema_name="raw",
+                table_name="bist_daily_archive",
+                interval="daily",
+                ts_col="TS",
+                checks=("END_DATE_CHECK", "NULL_CHECK", "DUPLICATE_CHECK"),
+            ),
+            DQTableConfig(
+                exchange="BIST",
+                schema_name="bronze",
+                table_name="bist_daily_high_filtered",
+                interval="daily",
+                ts_col="TS",
+                checks=("END_DATE_CHECK", "NULL_CHECK", "DUPLICATE_CHECK"),
+            ),
+            DQTableConfig(
+                exchange="BIST",
+                schema_name="silver",
+                table_name='FRVP_BIST_FOCUS_DATASET',
+                interval="daily",  # or "1min" -> you will set this explicitly when needed
+                ts_col="TS",
+                checks=("END_DATE_CHECK", "NULL_CHECK", "DUPLICATE_CHECK"),
+            ),
+            
+        ]
+
+        dq_run_id = dq.run_exchange_checks(dq_run_cfg, table_cfgs)
+        print(f"[BIST-DAILY-DQ] completed. DQ_RUN_ID={dq_run_id}")
     else:
         print(f'⏭️ [DQ - BIST] | Skipped!')
