@@ -2322,3 +2322,34 @@ class PostgresRepository:
         ''')
         with self.engine.begin() as conn:
             return int(conn.execute(q).scalar_one() or 0)
+        
+    ########################################
+    # NEW SYSTEM 6 EXC
+    ########################################
+
+
+    def get_in_scope_symbols_from_table(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+        symbol_col: str = "SYMBOL",
+        exchange_col: str = "EXCHANGE",
+        in_scope_col: str = "IN_SCOPE",
+    ) -> list[str]:
+        """
+        Reads symbol list from a generic scope table.
+        """
+
+        q = text(f'''
+            SELECT "{symbol_col}"
+            FROM "{schema}"."{table}"
+            WHERE "{exchange_col}" = :exchange
+            AND "{in_scope_col}" = TRUE
+            ORDER BY "{symbol_col}";
+        ''')
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange}).fetchall()
+
+        return [r[0] for r in rows]

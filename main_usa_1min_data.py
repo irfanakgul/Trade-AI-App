@@ -15,13 +15,13 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = UsaDataPipelineFlags(
-        ingest=False,
-        fallback_twelvedata=False,
-        fallback_yahoo=False,
-        sync_archive_to_working=False,
-        trim365=False,
-        build_focus_dataset=False, # prep focus symbols and datasets for all indicators
-        auto_sample_run = False,
+        ingest=True,
+        fallback_twelvedata=True,
+        fallback_yahoo=True,
+        sync_archive_to_working=True,
+        trim365=True,
+        build_focus_dataset=True, # prep focus symbols and datasets for all indicators
+        auto_sample_run = True,
         dq = True,
     )
 

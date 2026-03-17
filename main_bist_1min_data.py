@@ -15,8 +15,8 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistDataPipelineFlags(
-        ingest=False,
-        fallback=False,
+        ingest=True,
+        fallback=True,
         sync_archive_to_working=False,
         trim365=False,
         build_focus_dataset=False,
