@@ -780,8 +780,8 @@ class PostgresRepository:
         """
         interval = interval.strip().lower()
 
-        if interval not in {"1min", "daily"}:
-            raise ValueError("interval must be either '1min' or 'daily'")
+        if interval not in {"1min", "daily",'hourly'}:
+            raise ValueError("interval must be either '1min', 'hourly' or 'daily'")
 
         cols = '"SYMBOL","TIMESTAMP","TS","OPEN","HIGH","LOW","CLOSE","VOLUME","SOURCE","ROW_ID"'
 
@@ -810,7 +810,7 @@ class PostgresRepository:
         """)
 
         with self.engine.begin() as conn:
-            if interval == "1min":
+            if (interval == "1min") or (interval == "hourly"):
                 max_ts = conn.execute(get_max_q).scalar()
 
                 if max_ts is None:

@@ -17,15 +17,18 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistHourlyDataPipelineFlags(
-        ingest=True,
+        ingest=False,
         main_provider="tvdatafeed",
         alternative_provider="yahooquery",
         enable_fallback=True,
         use_db_last_timestamp=True,
         start_date="2024-01-01",
-        safe_days_back=1,
+        safe_days_back=2,
         main_provider_retries=2,
-        max_concurrent_symbols=4,
+        max_concurrent_symbols=3,
+
+        # flags sync
+        sync_archive_to_working = True,
     )
 
     await run_bist_hourly_data_pipeline(repo, flags)

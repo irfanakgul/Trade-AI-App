@@ -17,7 +17,9 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = OandaHourlyDataPipelineFlags(
-        ingest=True,
+
+        # flags ingest
+        ingest=False,
         main_provider="tvdatafeed",
         alternative_provider="not_implemented",
         enable_fallback=True,
@@ -26,9 +28,13 @@ async def main():
         safe_days_back=1,
         main_provider_retries=2,
         max_concurrent_symbols=2,
+        
+
+        # flags sync
+        sync_archive_to_working = True,
     )
 
-    await run_oanda_hourly_data_pipeline(repo, flags)
+    await run_oanda_hourly_data_pipeline(repo, flags,)
 
 
 if __name__ == "__main__":

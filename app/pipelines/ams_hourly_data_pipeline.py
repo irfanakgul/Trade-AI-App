@@ -9,6 +9,10 @@ from app.infrastructure.api_clients.tvdatafeed_hourly_provider import (
     TvDatafeedHourlyProvider,
     TvDatafeedHourlyConfig,
 )
+from app.infrastructure.api_clients.yahooquery_hourly_provider import (
+    YahooQueryHourlyProvider,
+    YahooQueryHourlyConfig,
+)
 from app.services.exchange_hourly_ingestion_service import (
     ExchangeHourlyIngestionService,
     ExchangeHourlyIngestionConfig,
@@ -16,12 +20,12 @@ from app.services.exchange_hourly_ingestion_service import (
 
 
 @dataclass(frozen=True)
-class NyseHourlyDataPipelineFlags:
+class EuronextHourlyDataPipelineFlags:
     # Step-1: ingestion
     ingest: bool = True
 
     main_provider: str = "tvdatafeed"
-    alternative_provider: str = "not_implemented"
+    alternative_provider: str = "yahooquery"
     enable_fallback: bool = True
 
     use_db_last_timestamp: bool = True
@@ -35,7 +39,7 @@ class NyseHourlyDataPipelineFlags:
     symbol_table: str = "FOCUS_SYMBOLS_ALL"
 
     target_schema: str = "raw"
-    target_table: str = "nyse_hourly_archive"
+    target_table: str = "ams_hourly_archive"
 
     error_schema: str = "logs"
     error_table: str = "ingestion_errors"
@@ -50,7 +54,7 @@ class NyseHourlyDataPipelineFlags:
     run_dq: bool = False
 
 
-def _build_main_provider(name: str):
+def _build_provider(name: str):
     name = name.lower().strip()
 
     if name == "tvdatafeed":
@@ -62,12 +66,17 @@ def _build_main_provider(name: str):
             )
         )
 
-    raise ValueError(f"Unsupported main provider: {name}")
+    if name == "yahooquery":
+        return YahooQueryHourlyProvider(
+            YahooQueryHourlyConfig(source_name="yahooquery")
+        )
+
+    raise ValueError(f"Unsupported provider: {name}")
 
 
-async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags):
+async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipelineFlags):
     print(
-        "\n[NYSE-HOURLY] pipeline started... "
+        "\n[EURONEXT-HOURLY] pipeline started... "
         + datetime.now().strftime("%d-%m-%Y %H:%M")
         + "\n"
     )
@@ -86,26 +95,24 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
         symbols = repo.get_in_scope_symbols_from_table(
             schema=flags.symbol_schema,
             table=flags.symbol_table,
-            exchange="NYSE",
+            exchange="EURONEXT",
             symbol_col="SYMBOL",
             exchange_col="EXCHANGE",
             in_scope_col="IN_SCOPE",
         )
 
-        print(f"[NYSE-HOURLY] symbol_count={len(symbols)}")
+        print(f"[EURONEXT-HOURLY] symbol_count={len(symbols)}")
 
-        main_provider = _build_main_provider(flags.main_provider)
-
-        # Fallback is intentionally reserved for future implementation
-        alternative_provider = None
+        main_provider = _build_provider(flags.main_provider)
+        alternative_provider = _build_provider(flags.alternative_provider) if flags.enable_fallback else None
 
         svc = ExchangeHourlyIngestionService(
             repo=repo,
             main_provider=main_provider,
             alternative_provider=alternative_provider,
             cfg=ExchangeHourlyIngestionConfig(
-                job_name="nyse_hourly_ingestion",
-                exchange="NYSE",
+                job_name="euronext_hourly_ingestion",
+                exchange="EURONEXT",
                 target_schema=flags.target_schema,
                 target_table=flags.target_table,
                 last_ts_schema=flags.target_schema,
@@ -126,70 +133,70 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
             start_date=flags.start_date,
         )
     else:
-        print("[NYSE-HOURLY] ingestion skipped")
+        print("[EURONEXT-HOURLY] ingestion skipped")
 
     # ----------------------------------------------------------
     # 2) SYNC raw -> bronze/working
     # ----------------------------------------------------------
     if flags.sync_archive_to_working:
-        print(F"[SYNC] NYSE sync implementation started...\n")
+        print(F"[SYNC] AMS sync implementation started...\n")
         ins = repo.sync_archive_to_working(
             archive_schema=flags.target_schema,
             archive_table=flags.target_table,
             working_schema="bronze",
-            working_table="synced_working_nyse_hourly",
+            working_table="synced_working_ams_hourly",
             ts_col="TS",
             safety_days=1,
             interval = "hourly",
         )
         print(
-            f"[SYNC] NYSE sync completed. inserted_rows={ins} "
+            f"[SYNC] AMS sync completed. inserted_rows={ins} "
             f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n")
     else:
-        print("[SYNC] NYSE skipped")
+        print("[SYNC] AMS skipped")
 
     # ----------------------------------------------------------
     # 3) TRIM
     # ----------------------------------------------------------
     if flags.trim_history:
-        print("[NYSE-HOURLY] trim step placeholder")
+        print("[EURONEXT-HOURLY] trim step placeholder")
         # later:
         # repo.trim_history_by_peak_or_lookback_ts(...)
     else:
-        print("[NYSE-HOURLY] trim skipped")
+        print("[EURONEXT-HOURLY] trim skipped")
 
     # ----------------------------------------------------------
     # 4) BUILD FOCUS DATASET
     # ----------------------------------------------------------
     if flags.build_focus_dataset:
-        print("[NYSE-HOURLY] focus dataset step placeholder")
+        print("[EURONEXT-HOURLY] focus dataset step placeholder")
         # later:
         # repo.build_frvp_focus_dataset(...)
     else:
-        print("[NYSE-HOURLY] focus dataset skipped")
+        print("[EURONEXT-HOURLY] focus dataset skipped")
 
     # ----------------------------------------------------------
     # 5) BUILD SAMPLE DATASET
     # ----------------------------------------------------------
     if flags.build_sample_dataset:
-        print("[NYSE-HOURLY] sample dataset step placeholder")
+        print("[EURONEXT-HOURLY] sample dataset step placeholder")
         # later:
         # repo.rebuild_symbol_sample_dataset(...)
     else:
-        print("[NYSE-HOURLY] sample dataset skipped")
+        print("[EURONEXT-HOURLY] sample dataset skipped")
 
     # ----------------------------------------------------------
     # 6) DQ
     # ----------------------------------------------------------
     if flags.run_dq:
-        print("[NYSE-HOURLY] dq step placeholder")
+        print("[EURONEXT-HOURLY] dq step placeholder")
         # later:
         # dq.run(...)
     else:
-        print("[NYSE-HOURLY] dq skipped")
+        print("[EURONEXT-HOURLY] dq skipped")
 
     print(
-        "\n[NYSE-HOURLY] pipeline finished... "
+        "\n[EURONEXT-HOURLY] pipeline finished... "
         + datetime.now().strftime("%d-%m-%Y %H:%M")
         + "\n"
     )
