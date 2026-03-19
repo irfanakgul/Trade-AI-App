@@ -17,6 +17,8 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = EuronextHourlyDataPipelineFlags(
+
+        # flags INGESTION
         ingest=False,
         main_provider="tvdatafeed",
         alternative_provider="yahooquery",
@@ -27,11 +29,20 @@ async def main():
         main_provider_retries=2,
         max_concurrent_symbols=4,
 
-        # flags sync
-        sync_archive_to_working = True,
+        # flags SYNC
+        sync_archive_to_working = False,
+        
+        # flags TRIM365
+        trim_history = False,
+
+        # flags ind build dataset
+        build_focus_dataset = False,
+        
+        # flags ind build dataset
+        run_dq=True
     )
 
-    await run_euronext_hourly_data_pipeline(repo, flags)
+    await run_euronext_hourly_data_pipeline(repo, flags,exchange='EURONEXT')
 
 
 if __name__ == "__main__":

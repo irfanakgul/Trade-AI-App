@@ -268,7 +268,7 @@ class DQV2Service:
             "dq_run_id": dq_run_id,
         }
 
-        if cfg.interval == "1min":
+        if (cfg.interval != "daily"):
             params["acceptable_min_ts"] = expected_end_time - timedelta(minutes=cfg.end_tolerance_minutes)
 
         with self.repo.engine.begin() as conn:

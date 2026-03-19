@@ -13,7 +13,8 @@ from app.services.exchange_hourly_ingestion_service import (
     ExchangeHourlyIngestionService,
     ExchangeHourlyIngestionConfig,
 )
-
+from datetime import datetime,date
+from app.services.dq_v2_service import DQV2Service, DQRunConfig, DQTableConfig
 
 @dataclass(frozen=True)
 class OandaHourlyDataPipelineFlags:
@@ -65,9 +66,9 @@ def _build_main_provider(name: str):
     raise ValueError(f"Unsupported main provider: {name}")
 
 
-async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFlags):
+async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFlags,exchange):
     print(
-        "\n[OANDA-HOURLY] pipeline started... "
+        "\n[INGESTION] ASSETS pipeline started... "
         + datetime.now().strftime("%d-%m-%Y %H:%M")
         + "\n"
     )
@@ -92,7 +93,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             in_scope_col="IN_SCOPE",
         )
 
-        print(f"[OANDA-HOURLY] symbol_count={len(symbols)}")
+        print(f"[INGESTION] ASSETS symbol_count={len(symbols)}")
 
         main_provider = _build_main_provider(flags.main_provider)
 
@@ -126,7 +127,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             start_date=flags.start_date,
         )
     else:
-        print("[OANDA-HOURLY] ingestion skipped")
+        print("❌ [INGESTION] ASSETS skipped")
 
     # ----------------------------------------------------------
     # 2) SYNC raw -> bronze/working
@@ -146,50 +147,153 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             f"[SYNC] ASSETS sync completed. inserted_rows={ins} "
             f"{datetime.now().strftime('%d-%m-%Y %H:%M')}\n")
     else:
-        print("[SYNC] ASSETS skipped")
+        print("❌ [SYNC] ASSETS skipped")
 
     # ----------------------------------------------------------
     # 3) TRIM
     # ----------------------------------------------------------
     if flags.trim_history:
-        print("[OANDA-HOURLY] trim step placeholder")
-        # later:
-        # repo.trim_history_by_peak_or_lookback_ts(...)
+        print(F"[TRIM365] ASSETS TRIM365 started...\n")
+
+        before = repo.count_rows(schema="bronze", table="synced_working_assets_hourly")
+        print(f"[TRIM365] ASSETS rows before trim: {before}")
+
+        deleted = repo.trim_history_by_peak_or_lookback_ts(
+            schema="bronze",
+            table="synced_working_assets_hourly",
+            symbol_col="SYMBOL",
+            ts_typed_col="TS",
+            high_col="HIGH",
+            lookback_days=365,
+            reference_days_ago=1,
+        )
+        print(
+            f"[TRIM365] ASSETS trim365 completed. deleted_rows={deleted} "
+            f"{datetime.now().strftime('%d-%m-%Y %H:%M')}"
+        )
+
+        after = repo.count_rows(schema="bronze", table="synced_working_assets_hourly")
+        print(f"[TRIM365] ASSETS rows after trim: {after}")
     else:
-        print("[OANDA-HOURLY] trim skipped")
+        print("❌ [TRIM365] ASSETS trim skipped")
 
     # ----------------------------------------------------------
     # 4) BUILD FOCUS DATASET
     # ----------------------------------------------------------
     if flags.build_focus_dataset:
-        print("[OANDA-HOURLY] focus dataset step placeholder")
-        # later:
-        # repo.build_frvp_focus_dataset(...)
+        print("[IND-FOCUS] ASSETS dataset build started...")
+
+        stats = repo.build_frvp_focus_dataset(
+            source_schema="bronze",
+            source_table="synced_working_assets_hourly",
+            target_schema="silver",
+            target_table="indicators_assets_focus_dataset",
+            ts_col="TS",
+            high_col="HIGH",
+            exchange=exchange,
+            min_trading_days=15,
+        )
+
+        #adding elemination reason
+        repo.update_focus_symbol_scope(
+            exchange=exchange,
+            compare_schema = 'silver',
+            compare_table='indicators_assets_focus_dataset',
+            reason='Highest HIGH Value falled in last 15 days',
+            main_symbol_schema = 'prod',
+            main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+            drop_and_recreate = False
+        )
+
+        print(
+            f'[IND-FOCUS] ASSETS Focus dataset built. '
+            f'symbols: {stats["before_symbols"]} -> {stats["after_symbols"]}, '
+            f'rows: {stats["before_rows"]} -> {stats["after_rows"]} '
+            f'{datetime.now().strftime("%d-%m-%Y %H:%M")}')
+        
     else:
-        print("[OANDA-HOURLY] focus dataset skipped")
+        print("❌ [IND-FOCUS] ASSETS dataset build skipped!")
 
     # ----------------------------------------------------------
-    # 5) BUILD SAMPLE DATASET
-    # ----------------------------------------------------------
-    if flags.build_sample_dataset:
-        print("[OANDA-HOURLY] sample dataset step placeholder")
-        # later:
-        # repo.rebuild_symbol_sample_dataset(...)
-    else:
-        print("[OANDA-HOURLY] sample dataset skipped")
-
-    # ----------------------------------------------------------
-    # 6) DQ
+    # 5) DQ
     # ----------------------------------------------------------
     if flags.run_dq:
-        print("[OANDA-HOURLY] dq step placeholder")
-        # later:
-        # dq.run(...)
-    else:
-        print("[OANDA-HOURLY] dq skipped")
+        print("[DQ] ASSETS starting...")
 
-    print(
-        "\n[OANDA-HOURLY] pipeline finished... "
-        + datetime.now().strftime("%d-%m-%Y %H:%M")
-        + "\n"
-    )
+        dq = DQV2Service(repo)
+
+        dq_run_cfg = DQRunConfig(
+            job_name="assets_hourly_data_pipeline",
+            active_table="dq_check_overview_assets",
+            specific_trading_calendar=False,   # later True when calendar table is ready
+            known_holidays=(),                 # later fill for USA holidays
+            as_of_date=date.today(),
+        )
+
+        tables = [
+            DQTableConfig(
+                exchange="OANDA",
+                schema_name="raw",
+                table_name="assets_hourly_archive",
+                interval="hourly",
+                ts_col="TS",
+                timestamp_col="TIMESTAMP",
+                symbol_col="SYMBOL",
+                row_id_col="ROW_ID",
+                expected_close_hour=23,        # change if your market-close convention differs
+                expected_close_minute=59,
+                end_tolerance_minutes=0,
+                bar_threshold=24,
+                checks=(
+                    "END_DATE_CHECK",
+                    "NULL_CHECK",
+                    "DUPLICATE_CHECK",
+                    "BAR_CHECK",
+                ),
+            ),
+            DQTableConfig(
+                exchange="OANDA",
+                schema_name="bronze",
+                table_name="synced_working_assets_hourly",
+                interval="hourly",
+                ts_col="TS",
+                timestamp_col="TIMESTAMP",
+                symbol_col="SYMBOL",
+                row_id_col="ROW_ID",
+                expected_close_hour=23,
+                expected_close_minute=59,
+                end_tolerance_minutes=0,
+                bar_threshold=24,
+                checks=(
+                    "END_DATE_CHECK",
+                    "NULL_CHECK",
+                    "DUPLICATE_CHECK",
+                    "BAR_CHECK",
+                ),
+            ),
+            DQTableConfig(
+                exchange="OANDA",
+                schema_name="silver",
+                table_name="indicators_assets_focus_dataset",
+                interval="hourly",
+                ts_col="TS",
+                timestamp_col="TIMESTAMP",
+                symbol_col="SYMBOL",
+                row_id_col="ROW_ID",
+                expected_close_hour=23,
+                expected_close_minute=59,
+                end_tolerance_minutes=0,
+                bar_threshold=24,
+                checks=(
+                    "END_DATE_CHECK",
+                    "NULL_CHECK",
+                    "DUPLICATE_CHECK",
+                    "BAR_CHECK",
+                ),
+            ),
+        ]
+
+        dq_run_id = dq.run_exchange_checks(dq_run_cfg, tables)
+        print(f"[DQ] ASSETS completed. DQ_RUN_ID={dq_run_id}")
+    else:
+        print("❌ [DQ] ASSETS skipped")

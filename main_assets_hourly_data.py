@@ -19,7 +19,7 @@ async def main():
     flags = OandaHourlyDataPipelineFlags(
 
         # flags ingest
-        ingest=False,
+        ingest=True,
         main_provider="tvdatafeed",
         alternative_provider="not_implemented",
         enable_fallback=True,
@@ -30,11 +30,22 @@ async def main():
         max_concurrent_symbols=2,
         
 
-        # flags sync
+        # flags SYNC
         sync_archive_to_working = True,
+        
+        # flags TRIM365
+        trim_history = True,
+
+        # flags build indicator focus dataset
+        build_focus_dataset = True,
+
+        # dq
+        run_dq = True
+
+
     )
 
-    await run_oanda_hourly_data_pipeline(repo, flags,)
+    await run_oanda_hourly_data_pipeline(repo, flags,'OANDA')
 
 
 if __name__ == "__main__":

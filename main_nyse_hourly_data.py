@@ -27,11 +27,19 @@ async def main():
         main_provider_retries=3,
         max_concurrent_symbols=3,
 
-        # flags sync
+        # flags SYNC
         sync_archive_to_working = True,
+        
+        # flags TRIM365
+        trim_history = True,
+
+        # flags indicator focus dataset prep
+        build_focus_dataset=True,
+        # dq
+        run_dq = True
     )
 
-    await run_nyse_hourly_data_pipeline(repo, flags)
+    await run_nyse_hourly_data_pipeline(repo, flags,'NYSE')
 
 
 if __name__ == "__main__":

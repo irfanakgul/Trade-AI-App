@@ -2353,3 +2353,115 @@ class PostgresRepository:
             rows = conn.execute(q, {"exchange": exchange}).fetchall()
 
         return [r[0] for r in rows]
+    
+    # symbol list comparison and adding elemination reason
+    def update_focus_symbol_scope(
+        self,
+        exchange: str,
+        compare_schema: str,
+        compare_table: str,
+        reason: str,
+        main_symbol_schema: str,
+        main_symbol_table: str,
+        drop_and_recreate: bool = False,  # Set True only on first run of the day to reset the table
+    ) -> dict:
+        """
+        Manages OUT_OF_SCOPE and OOS_REASON flags on the cloned symbol list table.
+
+        drop_and_recreate=True  → drops and recreates the table from scratch (use on first run of the day)
+        drop_and_recreate=False → only updates flags, never touches the table structure or other rows
+
+        Elimination logic:
+        - Symbols missing from compare table are marked OUT_OF_SCOPE = True with the given reason
+        - Symbols already marked True are never overwritten (first elimination wins)
+        - Symbol list never shrinks — only flags are updated
+        """
+
+        src_fqn = f'{main_symbol_schema}."{main_symbol_table}"'
+        tgt_fqn = 'silver."cloned_focus_symbol_list"'
+        cmp_fqn = f'{compare_schema}."{compare_table}"'
+
+        # Drop and recreate from scratch — only used on first run of the day
+        q_drop = text(f'DROP TABLE IF EXISTS {tgt_fqn};')
+
+        q_create_fresh = text(f"""
+            CREATE TABLE {tgt_fqn} AS
+            SELECT
+                s.*,
+                FALSE::boolean AS "OUT_OF_SCOPE",
+                NULL::text     AS "OOS_REASON"
+            FROM {src_fqn} s;
+        """)
+
+        # Safe create — only runs if table doesn't exist yet (drop_and_recreate=False path)
+        q_create_if_not_exists = text(f"""
+            CREATE TABLE IF NOT EXISTS {tgt_fqn} AS
+            SELECT
+                s.*,
+                FALSE::boolean AS "OUT_OF_SCOPE",
+                NULL::text     AS "OOS_REASON"
+            FROM {src_fqn} s;
+        """)
+
+        # Update flags only — never touches already eliminated symbols
+        q_update = text(f"""
+            UPDATE {tgt_fqn} t
+            SET
+                "OUT_OF_SCOPE" = TRUE,
+                "OOS_REASON"   = :reason
+            WHERE t."EXCHANGE" = :exchange
+            AND t."OUT_OF_SCOPE" = FALSE
+            AND NOT EXISTS (
+                SELECT 1
+                FROM {cmp_fqn} c
+                WHERE c."SYMBOL" = t."SYMBOL"
+            );
+        """)
+
+        # Count results and collect eliminated symbol names for this exchange after update
+        q_counts = text(f"""
+            SELECT
+                COUNT(*)                                                                    AS total,
+                COUNT(*) FILTER (WHERE "OUT_OF_SCOPE" = TRUE)                              AS eliminated,
+                COUNT(*) FILTER (WHERE "OUT_OF_SCOPE" = FALSE)                             AS remaining,
+                ARRAY_AGG("SYMBOL") FILTER (WHERE "OUT_OF_SCOPE" = TRUE AND "EXCHANGE" = :exchange) AS eliminated_symbols
+            FROM {tgt_fqn}
+            WHERE "EXCHANGE" = :exchange;
+        """)
+
+        with self.engine.begin() as conn:
+            if drop_and_recreate:
+                conn.execute(q_drop)
+                conn.execute(q_create_fresh)
+            else:
+                conn.execute(q_create_if_not_exists)
+
+            conn.execute(q_update, {"exchange": exchange, "reason": reason})
+            counts = conn.execute(q_counts, {"exchange": exchange}).mappings().one()
+
+        total      = int(counts["total"])
+        eliminated = int(counts["eliminated"])
+        remaining  = int(counts["remaining"])
+        eliminated_syms = counts["eliminated_symbols"] or []  # None gelirse boş list
+
+
+        print(
+            f"[{exchange}] Symbol scope update | "
+            f"Total: {total} | "
+            f"Eliminated: {eliminated} | "
+            f"Remaining: {remaining} | "
+            f"Reason: '{reason}' | "
+         
+        )
+
+        return {
+            "exchange":        exchange,
+            "source":          f"{main_symbol_schema}.{main_symbol_table}",
+            "target":          "silver.cloned_focus_symbol_list",
+            "compare":         f"{compare_schema}.{compare_table}",
+            "drop_and_recreate": drop_and_recreate,
+            "total":           total,
+            "eliminated":      eliminated,
+            "remaining":       remaining,
+            "reason":          reason,
+        }

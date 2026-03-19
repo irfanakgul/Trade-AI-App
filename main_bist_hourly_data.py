@@ -17,7 +17,7 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistHourlyDataPipelineFlags(
-        ingest=False,
+        ingest=True,
         main_provider="tvdatafeed",
         alternative_provider="yahooquery",
         enable_fallback=True,
@@ -27,11 +27,21 @@ async def main():
         main_provider_retries=2,
         max_concurrent_symbols=3,
 
-        # flags sync
+         # flags SYNC
         sync_archive_to_working = True,
-    )
+        
+        # flags TRIM365
+        trim_history = True,
 
-    await run_bist_hourly_data_pipeline(repo, flags)
+        # flags indicator focus dataset
+        build_focus_dataset=True,
+        
+        # dq
+        run_dq = True
+        
+        )
+
+    await run_bist_hourly_data_pipeline(repo, flags,'BIST')
 
 
 if __name__ == "__main__":
