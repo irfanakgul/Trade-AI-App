@@ -49,7 +49,7 @@ class IndMfiFocusService:
             raise ValueError(f"MFI input_table is empty. exchange={exchange}")
 
         # Same symbol scope as EMA / RSI
-        symbols = self.repo.get_ema_focus_symbols(exchange=exchange)
+        symbols = self.repo.get_cloned_focus_symbols(exchange=exchange)
         if not symbols:
             print(f"[MFI] No in-scope symbols found. exchange={exchange}")
             return
@@ -150,10 +150,10 @@ class IndMfiFocusService:
                     "END_DATE": pd.to_datetime(row["TIMESTAMP"]).to_pydatetime(),
 
                     "MFI": float(row["MFI"]) if pd.notna(row["MFI"]) else None,
-                    "MF_TODAY": float(row["MF_TODAY"]) if pd.notna(row["MF_TODAY"]) else None,
-                    "MF_YESTERDAY": float(row["MF_YESTERDAY"]) if pd.notna(row["MF_YESTERDAY"]) else None,
-                    "MF_12DAY_AVG": float(row["MF_12DAY_AVG"]) if pd.notna(row["MF_12DAY_AVG"]) else None,
-                    "MF_DIRECTION": str(row["MF_DIRECTION"]) if pd.notna(row["MF_DIRECTION"]) else None,
+                    "MFI": float(row["MFI"]) if pd.notna(row["MFI"]) else None,
+                    "MFI_YESTERDAY": float(row["MFI_YESTERDAY"]) if pd.notna(row["MFI_YESTERDAY"]) else None,
+                    "MFI_12DAY_AVG": float(row["MFI_12DAY_AVG"]) if pd.notna(row["MFI_12DAY_AVG"]) else None,
+                    "MFI_DIRECTION": str(row["MFI_DIRECTION"]) if pd.notna(row["MFI_DIRECTION"]) else None,                                                 
 
                     "CREATED_AT": created_at,
                 })

@@ -1112,12 +1112,6 @@ class PostgresRepository:
                 ON {schema}."{table}" ("SYMBOL","TIMESTAMP");
             """))
 
-    def truncate_table(self, schema: str, table: str) -> None:
-        """
-        Truncates a table (fast delete).
-        """
-        with self.engine.begin() as conn:
-            conn.execute(text(f'TRUNCATE TABLE {schema}."{table}";'))
 
     def build_converted_daily_for_ema_rsi_scope(
         self,
@@ -2128,20 +2122,29 @@ class PostgresRepository:
         q = text("""
             INSERT INTO silver."IND_MFI_FOCUS" (
                 "EXCHANGE","SYMBOL","END_DATE",
-                "MFI","MF_TODAY","MF_YESTERDAY","MF_12DAY_AVG","MF_DIRECTION",
+                "MFI","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
                 "CREATED_AT"
             )
             VALUES (
                 :EXCHANGE,:SYMBOL,:END_DATE,
-                :MFI,:MF_TODAY,:MF_YESTERDAY,:MF_12DAY_AVG,:MF_DIRECTION,
+                :MFI,:MFI_YESTERDAY,:MFI_12DAY_AVG,:MFI_DIRECTION,
                 :CREATED_AT
             );
         """)
 
-        with self.engine.begin() as conn:
-            conn.execute(q, rows)
+        normalized_rows = []
+        for r in rows:
+            rr = dict(r)
+            rr.setdefault("MFI", None)
+            rr.setdefault("MFI_YESTERDAY", None)
+            rr.setdefault("MFI_12DAY_AVG", None)
+            rr.setdefault("MFI_DIRECTION", None)
+            normalized_rows.append(rr)
 
-        return len(rows)
+        with self.engine.begin() as conn:
+            conn.execute(q, normalized_rows)
+
+        return len(normalized_rows)
     
     def fetch_last_n_days_ohlcv_for_symbols(
         self,
@@ -2220,7 +2223,7 @@ class PostgresRepository:
     ###########################################
 
     def truncate_table(self, schema: str, table: str) -> None:
-        q = text(f'TRUNCATE TABLE {schema}."{table}";')
+        q = text(f'TRUNCATE TABLE "{schema}"."{table}";')  # ✅ HER İKİSİ TİRNAKLI
         with self.engine.begin() as conn:
             conn.execute(q)
 
@@ -2288,10 +2291,9 @@ class PostgresRepository:
                 rsi."RSI_CROSS_DAYS_AGO" AS "RSI_CROSS_DAYS_AGO",
 
                 mfi."MFI" AS "MFI",
-                mfi."MF_TODAY" AS "MFI_TODAY",
-                mfi."MF_YESTERDAY" AS "MFI_YESTERDAY",
-                mfi."MF_12DAY_AVG" AS "MFI_12DAY_AVG",
-                mfi."MF_DIRECTION" AS "MFI_DIRECTION",
+                mfi."MFI_YESTERDAY" AS "MFI_YESTERDAY",
+                mfi."MFI_12DAY_AVG" AS "MFI_12DAY_AVG",
+                mfi."MFI_DIRECTION" AS "MFI_DIRECTION",
 
                 vwap."HIGHEST_VALUE" AS "VWAP_HIGHEST_VALUE",
                 vwap."HIGHEST_TIMESTAMP" AS "VWAP_HIGHEST_TIMESTAMP",
@@ -2332,7 +2334,7 @@ class PostgresRepository:
                 "BS_OPEN_PRICE","BS_CLOSE_PRICE","BS_DIFFER","BS_PERC","BS_BAR_STATUS",
                 "EMA_END_DATE","EMA5","EMA20","EMA_STATUS","EMA_CROSS","EMA_DAYS_SINCE_CROSS",
                 "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
-                "MFI","MFI_TODAY","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
+                "MFI","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
                 "VWAP_HIGHEST_VALUE","VWAP_HIGHEST_TIMESTAMP","VWAP","VOL_AVG_10DAY","VOL_AVG_20DAY","VOL_AVG_30DAY",
                 "CREATED_AT","CREATED_DAY"
             )
@@ -2348,7 +2350,7 @@ class PostgresRepository:
                 "BS_OPEN_PRICE","BS_CLOSE_PRICE","BS_DIFFER","BS_PERC","BS_BAR_STATUS",
                 "EMA_END_DATE","EMA5","EMA20","EMA_STATUS","EMA_CROSS","EMA_DAYS_SINCE_CROSS",
                 "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
-                "MFI","MFI_TODAY","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
+                "MFI","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
                 "VWAP_HIGHEST_VALUE","VWAP_HIGHEST_TIMESTAMP","VWAP","VOL_AVG_10DAY","VOL_AVG_20DAY","VOL_AVG_30DAY",
                 "CREATED_AT","CREATED_DAY"
             )
@@ -2375,10 +2377,6 @@ class PostgresRepository:
         with self.engine.begin() as conn:
             return int(conn.execute(q).scalar_one())
 
-    def truncate_table(self, schema: str, table: str) -> None:
-        q = text(f'TRUNCATE TABLE {schema}."{table}";')
-        with self.engine.begin() as conn:
-            conn.execute(q)
 
     def archive_dq_rows(self, active_table: str) -> int:
         """

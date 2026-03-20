@@ -45,8 +45,12 @@ async def main():
 
         bar_status=False,
         run_frvp=False,
-        run_convert_daily = False,
+        run_convert_daily = True,
         run_ema_ind = True,
+        run_vwap_ind = True,
+        run_rsi_ind = True,
+        run_mfi_ind = True,
+        run_combined_indicators = True
 
     )
 

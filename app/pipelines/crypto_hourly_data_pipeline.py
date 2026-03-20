@@ -75,6 +75,11 @@ class BinanceHourlyDataPipelineFlags:
     run_ema_ind: bool = True
     converted_schema:str = 'silver'
     converted_table:str = 'converted_daily_dataset_crypto'
+    run_vwap_ind:bool = True
+    run_rsi_ind:bool = True
+    run_mfi_ind:bool = True
+    run_combined_indicators:bool = True
+
 
 
     
@@ -371,10 +376,9 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
     #---------------------------------
     
     if flags.run_frvp:
-        svc = IndFrvPocProfileService(repo=repo)
-
         print(f"[IND-FRVP] CRYPTO started ({exchange})...")
 
+        svc = IndFrvPocProfileService(repo=repo)
         svc.run(
             exchange=exchange,
             periods=["2year", "1year", "6months", "4months"],
@@ -397,7 +401,6 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             main_symbol_table = 'FOCUS_SYMBOLS_ALL',
             drop_and_recreate = False
         )
-
     else:
         print(f"❌ [IND-FRVP] CRYPTO skipped for exchange={exchange}")
 
@@ -405,6 +408,8 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
     # IND-3) run_convert_daily
     #---------------------------------
     if flags.run_convert_daily:
+        print(f"[IND-CONVERT_DAILY] CRYPTO started ({exchange})...")
+
         stats = repo.build_converted_daily_for_ema_rsi_scope(
             exchange=exchange,
             interval='hourly',  
@@ -413,8 +418,8 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             source_table='indicators_crypto_focus_dataset',
             ts_col="TS",
             high_col="HIGH",
-            target_schema=converted_schema,
-            target_table=converted_table,#'converted_daily_dataset_crypto',
+            target_schema=flags.converted_schema,
+            target_table=flags.converted_table,#'converted_daily_dataset_crypto',
         )
         print(
             f'[IND-CONVERT] Converted-daily built. exchange={stats["exchange"]} '
@@ -430,6 +435,8 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
     # IND-4) EMA CALC
     #---------------------------------
     if flags.run_ema_ind:
+        print(f"[IND-EMA] CRYPTO started ({exchange})...")
+
         svc = IndEmaFocusService(repo=repo)
         svc.run(
             exchange=exchange,
@@ -441,3 +448,77 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
         
     else:
         print('❌ [IND-EMA] CRYPTO skipped!')
+
+    #---------------------------------
+    # IND-5) WVAP CALC
+    #---------------------------------
+    if flags.run_vwap_ind:
+        print(f"[IND-VWAP] CRYPTO started ({exchange})...")
+
+        svc = IndVwapFocusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema=flags.converted_schema,
+            source_table=flags.converted_table,
+            target_schema='silver',
+            target_table='IND_VWAP_FOCUS',
+            lookback_month=4,
+        )
+    else:
+        print('❌ [IND-VWAP] CRYPTO skipped!')
+
+    #---------------------------------
+    # IND-6) RSI CALC
+    #---------------------------------
+    if flags.run_rsi_ind:
+        print(f"[IND-RSI] CRYPTO started ({exchange})...")
+
+        svc = IndRsiFocusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.converted_schema,
+            input_table=flags.converted_table,
+            rsi_calc_history_days=120,
+            rsi_signal_lookback_days=20,
+        )
+    else:
+        print('❌ [IND-RSI] CRYPTO skipped!')
+
+    #---------------------------------
+    # IND-7) MFI CALC
+    #---------------------------------
+    if flags.run_mfi_ind:
+        print(f"[IND-MFI] CRYPTO started ({exchange})...")
+        svc = IndMfiFocusService(repo=repo)
+        
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.converted_schema,
+            input_table=flags.converted_table,
+            mfi_calc_history_days=120,
+        )
+        
+    else:
+        print('❌ [IND-MFI] CRYPTO skipped!')
+
+    #---------------------------------
+    # IND-8) MASTER IND FILE
+    #---------------------------------
+    
+    if flags.run_combined_indicators:
+        svc = IndMasterCombinedIndicatorsService(repo=repo)
+
+        svc.run(
+            exchange=exchange,
+            target_schema='gold',
+            target_table='crypto_master_combined_indicators',
+            log_schema='logs',
+            log_table='log_crypto_master_combined_indicators',
+
+            frvp_table="IND_FRV_POC_PROFILE",
+            bs_table="IND_BAR_STATUS",
+            ema_table="IND_EMA_FOCUS",
+            rsi_table="IND_RSI_FOCUS",
+            mfi_table="IND_MFI_FOCUS",
+            vwap_table="IND_VWAP_FOCUS",
+        )

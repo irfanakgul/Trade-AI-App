@@ -15,30 +15,22 @@ def calculate_mfi(
     low_col: str = "LOW",
 ) -> pd.DataFrame:
     """
-    Legacy pandas MFI logic preserved as closely as possible.
+    Legacy MFI logic preserved exactly.
 
-    Expected input columns:
-    - SYMBOL
-    - TIMESTAMP
-    - CLOSE
-    - VOLUME
-    - optionally HIGH / LOW
-
-    If HIGH / LOW are missing:
+    If HIGH / LOW columns do not exist:
     - HIGH = CLOSE * 1.01
     - LOW  = CLOSE * 0.99
 
-    Output columns added:
+    Output columns:
     - MFI
-    - MF_TODAY
-    - MF_YESTERDAY
-    - MF_12DAY_AVG
-    - MF_DIRECTION
+    - MFI_YESTERDAY
+    - MFI_12DAY_AVG
+    - MFI_DIRECTION
 
-    IMPORTANT:
-    - Unlike the old screening-style code, this version does NOT filter only Upward rows.
-    - It returns all rows so the latest feature can always be stored.
+    Final filter:
+    - keep only rows where MFI_DIRECTION == "Upward"
     """
+
     required_cols = {"SYMBOL", "TIMESTAMP", price_col, volume_col}
     missing = required_cols - set(df.columns)
     if missing:
@@ -68,41 +60,45 @@ def calculate_mfi(
         g = group.sort_values("TIMESTAMP").reset_index(drop=True).copy()
         g["SYMBOL"] = symbol
 
-        # If HIGH / LOW missing, derive from CLOSE
+        # Use HIGH / LOW if present, otherwise derive from CLOSE
         h = g[high_col] if high_col in g.columns else g[price_col] * 1.01
         l = g[low_col] if low_col in g.columns else g[price_col] * 0.99
 
-        typical_price = (h + l + g[price_col]) / 3.0
+        # Step 1: Typical Price
+        typical_price = (h + l + g[price_col]) / 3
+
+        # Step 2: Raw Money Flow
         raw_money_flow = typical_price * g[volume_col]
 
+        # Step 2b: Positive / Negative MF
         price_change = typical_price.diff()
-        positive_mf = raw_money_flow.where(price_change > 0, 0)
-        negative_mf = raw_money_flow.where(price_change < 0, 0)
+        positive_mf = np.where(price_change > 0, raw_money_flow, 0)
+        negative_mf = np.where(price_change < 0, raw_money_flow, 0)
 
-        pos_sum = positive_mf.rolling(window=length, min_periods=length).sum()
-        neg_sum = negative_mf.rolling(window=length, min_periods=length).sum()
+        # Step 3: Rolling sums
+        pos_sum = pd.Series(positive_mf).rolling(window=length, min_periods=length).sum()
+        neg_sum = pd.Series(negative_mf).rolling(window=length, min_periods=length).sum()
 
-        g["MFI"] = 100 * pos_sum / (pos_sum + neg_sum + 1e-10)
+        # Step 3b: Money Ratio
+        mf_ratio = pos_sum / (neg_sum + 1e-10)
 
-        g["MF_TODAY"] = raw_money_flow
-        g["MF_YESTERDAY"] = raw_money_flow.shift(1)
-        g["MF_12DAY_AVG"] = (
-            raw_money_flow.rolling(window=length, min_periods=length).sum()
-            - g["MF_TODAY"]
-            - g["MF_YESTERDAY"]
-        ) / 12
+        # Step 4: MFI
+        g["MFI"] = 100 - (100 / (1 + mf_ratio))
+        g["MFI_YESTERDAY"] = g["MFI"].shift(1)
 
-        g["MF_DIRECTION"] = np.where(
-            g["MF_TODAY"] > g["MF_YESTERDAY"],
-            "Upward",
-            "Downward"
-        )
+        # Last 12-day average excluding today and yesterday
+        g["MFI_12DAY_AVG"] = g["MFI"].shift(2).rolling(window=12, min_periods=12).mean()
+
+        # Direction
+        g["MFI_DIRECTION"] = np.where(g["MFI"] > g["MFI_YESTERDAY"], "Upward", "Downward")
 
         result_frames.append(g)
 
     if not result_frames:
         return pd.DataFrame(columns=list(work.columns) + [
-            "MFI", "MF_TODAY", "MF_YESTERDAY", "MF_12DAY_AVG", "MF_DIRECTION"
+            "MFI", "MFI_YESTERDAY", "MFI_12DAY_AVG", "MFI_DIRECTION"
         ])
 
-    return pd.concat(result_frames, ignore_index=True).reset_index(drop=True)
+    result = pd.concat(result_frames, ignore_index=True)
+
+    return result[result["MFI_DIRECTION"] == "Upward"].reset_index(drop=True)
