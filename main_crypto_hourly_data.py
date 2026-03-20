@@ -17,7 +17,13 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BinanceHourlyDataPipelineFlags(
-        ingest=True,
+
+        #=================================================================#
+        # DATA INGESTION
+        #=================================================================#
+
+        #data pull
+        ingest=False,
         main_provider="binance_api",
         alternative_provider="tvdatafeed",
         enable_fallback=True,
@@ -27,16 +33,21 @@ async def main():
         main_provider_retries=2,
         max_concurrent_symbols=3,
 
-        # flags SYNC
-        sync_archive_to_working = True,
-        
-        # flags TRIM365
-        trim_history = True,
+        # prep
+        sync_archive_to_working = False,
+        trim_history = False,
+        build_focus_dataset= False,
+        run_dq = False,
 
-        # flags indicator focus dataset
-        build_focus_dataset= True,
-        # dq
-        run_dq = True
+        #=================================================================#
+        # INDICATOR FLAGS
+        #=================================================================#
+
+        bar_status=False,
+        run_frvp=False,
+        run_convert_daily = False,
+        run_ema_ind = True,
+
     )
 
     await run_binance_hourly_data_pipeline(repo, flags,'BINANCE')

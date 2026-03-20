@@ -43,7 +43,7 @@ class IndEmaFocusService:
         """
         exchange = exchange.upper().strip()
 
-        symbols = self.repo.get_ema_focus_symbols(exchange=exchange)
+        symbols = self.repo.get_cloned_focus_symbols(exchange=exchange)
         if not symbols:
             print(f"[EMA] No in-scope symbols found. exchange={exchange}")
             return

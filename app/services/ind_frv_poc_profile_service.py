@@ -16,11 +16,11 @@ from app.core.indicators.frvp.frvp_math_fast import (
 
 @dataclass(frozen=True)
 class FrvpServiceConfig:
-    interval: str = "1min"
+    interval: str = "hourly"
     job_name: str = "ind_frv_poc_profile"
     calc_group: str = "FRVP"
     calc_name: str = "POC_VAL_VAH"
-    max_concurrent_symbols: int = 1  # CPU-heavy math; keep low
+    max_concurrent_symbols: int = 1
 
 
 class IndFrvPocProfileService:
@@ -33,45 +33,69 @@ class IndFrvPocProfileService:
         exchange: str,
         periods: List[str],
         cutt_off_date: Optional[str],
+        frvp_source_schema: str = '',
+        frvp_source_table: str = '',
+        frvp_target_schema: str = '',
+        frvp_target_table: str = '',
         is_truncate_scope: bool = True,
     ) -> None:
+        
         exchange = exchange.upper().strip()
+        
+        print(f"\n{'='*80}")
+        print(f"[FRVP RUN START] exchange={exchange}")
+        print(f"[FRVP CONFIG] source={frvp_source_schema}.{frvp_source_table}")
+        print(f"[FRVP CONFIG] target={frvp_target_schema}.{frvp_target_table}")
+        print(f"[FRVP CONFIG] periods={periods}")
+        print(f"{'='*80}\n")
 
-        symbols = self.repo.get_frvp_focus_symbols(exchange=exchange)
+        # 🔍 DEBUG: Check symbols
+        symbols = self.repo.get_cloned_focus_symbols(exchange=exchange)
+        print(f"[FRVP DEBUG] Found {len(symbols)} symbols: {symbols[:5]}..." if len(symbols) > 5 else f"[FRVP DEBUG] Found {len(symbols)} symbols: {symbols}")
+        
         if not symbols:
-            print(f"[FRVP] No symbols found for exchange={exchange}")
+            print(f"[FRVP] ❌ No symbols found for exchange={exchange}")
             return
 
         periods_sorted = self._sort_periods_short_to_long(periods)
+        print(f"[FRVP DEBUG] Periods sorted: {periods_sorted}")
+
         if not periods_sorted:
-            print(f"[FRVP] No valid periods provided. exchange={exchange}")
+            print(f"[FRVP] ❌ No valid periods provided. exchange={exchange}")
             return
 
+        # 🔍 DEBUG: Delete scope
         deleted = self.repo.delete_ind_frvp_scope(
             exchange=exchange,
+            frvp_target_schema=frvp_target_schema,
+            frvp_target_table=frvp_target_table,
             interval=self.cfg.interval,
             periods=periods_sorted,
         )
-        print(
-            f"[FRVP] Scope cleaned: exchange={exchange} interval={self.cfg.interval} "
-            f"deleted_rows={deleted}"
-        )
-
-        source_table = "FRVP_USA_FOCUS_DATASET" if exchange == "USA" else "FRVP_BIST_FOCUS_DATASET"
+        print(f"[FRVP DEBUG] Deleted {deleted} old rows from {frvp_target_schema}.{frvp_target_table}")
 
         total = len(symbols)
+        total_inserted = 0
+        failed_symbols = []
+        
         for idx, symbol in enumerate(symbols, start=1):
             try:
-                self._process_symbol(
+                inserted = self._process_symbol(
                     idx=idx,
                     total=total,
                     exchange=exchange,
                     symbol=symbol,
-                    source_table=source_table,
+                    source_schema=frvp_source_schema,
+                    source_table=frvp_source_table,
+                    target_schema=frvp_target_schema,
+                    target_table=frvp_target_table,
                     periods_sorted=periods_sorted,
                     cutt_off_date=cutt_off_date,
                 )
+                total_inserted += inserted
             except Exception as e:
+                print(f"[FRVP ERROR] {symbol}: {str(e)[:100]}")
+                failed_symbols.append(symbol)
                 self._log_error(
                     exchange=exchange,
                     symbol=symbol,
@@ -80,14 +104,23 @@ class IndFrvPocProfileService:
                     e=e,
                 )
 
+        print(f"\n[FRVP DEBUG] Total rows inserted: {total_inserted}")
+        print(f"[FRVP DEBUG] Failed symbols: {len(failed_symbols)}")
+        
+        # 🔍 DEBUG: Update scope
         total_sym, true_sym = self.repo.update_in_scope_for_ema_rsi(
             exchange=exchange,
+            frvp_target_schema=frvp_target_schema,
+            frvp_target_table=frvp_target_table,
             interval=self.cfg.interval,
         )
         print(
-            f"[FRVP {exchange}] IN_SCOPE_FOR_EMA_RSI computed. "
-            f"unique_symbols={total_sym} true_symbols={true_sym}"
+            f"[FRVP {exchange}] ✅ COMPLETED | "
+            f"Total symbols: {total_sym} | "
+            f"True symbols (in scope): {true_sym} | "
+            f"Inserted rows: {total_inserted}"
         )
+        print(f"{'='*80}\n")
         
     def _process_symbol(
         self,
@@ -95,37 +128,51 @@ class IndFrvPocProfileService:
         total: int,
         exchange: str,
         symbol: str,
+        source_schema: str,
         source_table: str,
+        target_schema: str,
+        target_table: str,
         periods_sorted: List[str],
         cutt_off_date: Optional[str],
-    ) -> None:
-        # Determine end_ts
-        max_ts = self.repo.get_symbol_max_ts(table=source_table, symbol=symbol, ts_col="TS")
+    ) -> int:
+        """Returns number of rows inserted for this symbol"""
+        
+        # 🔍 DEBUG: Get max timestamp
+        max_ts = self.repo.get_symbol_max_ts(
+            schema=source_schema,
+            table=source_table,
+            symbol=symbol,
+            ts_col="TS"
+        )
         if max_ts is None:
-            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: no data")
-            return
-
+            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  NO DATA in source table")
+            return 0
+        
+        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: max_ts={max_ts}")
+        
         if cutt_off_date:
             cutoff_dt = pd.to_datetime(cutt_off_date)
             end_ts = min(max_ts, cutoff_dt.to_pydatetime())
         else:
             end_ts = max_ts
 
-        # Latest close once per symbol (same for all periods)
+        # Latest close once per symbol
         latest_close = self.repo.get_latest_close_value(
-            schema="silver",
+            schema=source_schema,
             table=source_table,
             symbol=symbol,
             ts_col="TS",
             close_col="CLOSE",
         )
+        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: latest_close={latest_close}")
 
-        # ---- Optimization: find global peak in the LONGEST window once ----
+        # Find global peak in LONGEST window
         longest_p = periods_sorted[-1]
         longest_delta = self._period_to_delta(longest_p)
         longest_start = (pd.Timestamp(end_ts) - longest_delta).to_pydatetime()
 
         global_peak_ts = self.repo.get_peak_ts_in_window(
+            schema=source_schema,
             table=source_table,
             symbol=symbol,
             start_ts=longest_start,
@@ -134,12 +181,13 @@ class IndFrvPocProfileService:
             high_col="HIGH",
         )
         if global_peak_ts is None:
-            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: no peak in longest window")
-            return
+            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  NO PEAK FOUND in longest window ({longest_p})")
+            return 0
 
         global_peak_dt = pd.to_datetime(global_peak_ts).to_pydatetime()
+        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: global_peak_ts={global_peak_dt}")
 
-        # Determine BASE_PERIOD: the first (shortest) period window that contains the global peak
+        # Determine BASE_PERIOD
         base_period = longest_p
         base_index = len(periods_sorted) - 1
 
@@ -151,26 +199,33 @@ class IndFrvPocProfileService:
                 base_index = i
                 break
 
+        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: base_period={base_period} (index={base_index})")
+
         out_rows: List[Dict[str, Any]] = []
 
-        # ---- 1) SHORT periods (strictly shorter than base) computed normally ----
+        # ---- 1) SHORT periods ----
         short_periods = periods_sorted[:base_index]
         for p in short_periods:
             try:
                 row = self._compute_period_row(
                     exchange=exchange,
                     symbol=symbol,
+                    source_schema=source_schema,
                     source_table=source_table,
                     period=p,
                     end_ts=end_ts,
                     cutt_off_date=cutt_off_date,
-                    forced_peak_ts=None,              # compute peak per-window
-                    based_period=p,                   # computed from itself
+                    forced_peak_ts=None,
+                    based_period=p,
                     latest_close=latest_close,
                 )
                 if row:
                     out_rows.append(row)
+                    print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ✅ Computed {p}")
+                else:
+                    print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  No data for period {p}")
             except Exception as e:
+                print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ❌ Error in period {p}: {str(e)[:80]}")
                 self._log_error(
                     exchange=exchange,
                     symbol=symbol,
@@ -179,25 +234,29 @@ class IndFrvPocProfileService:
                     e=e,
                 )
 
-        # ---- 2) BASE period computed once using global peak ----
+        # ---- 2) BASE period ----
         base_row: Optional[Dict[str, Any]] = None
         try:
             base_row = self._compute_period_row(
                 exchange=exchange,
                 symbol=symbol,
+                source_schema=source_schema,
                 source_table=source_table,
                 period=base_period,
                 end_ts=end_ts,
                 cutt_off_date=cutt_off_date,
-                forced_peak_ts=global_peak_dt,       # IMPORTANT: global peak
-                based_period=base_period,            # computed from base_period
+                forced_peak_ts=global_peak_dt,
+                based_period=base_period,
                 latest_close=latest_close,
             )
             if base_row:
-                # Ensure not blank (hard safety)
                 base_row["BASED_PERIOD"] = base_row.get("BASED_PERIOD") or base_period
                 out_rows.append(base_row)
+                print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ✅ Computed BASE ({base_period})")
+            else:
+                print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  No data for BASE period")
         except Exception as e:
+            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ❌ Error in BASE: {str(e)[:80]}")
             self._log_error(
                 exchange=exchange,
                 symbol=symbol,
@@ -206,30 +265,42 @@ class IndFrvPocProfileService:
                 e=e,
             )
 
-        # ---- 3) LONGER periods copied from BASE (no math) ----
+        # ---- 3) LONGER periods (copy from BASE) ----
         copied_cnt = 0
         if base_row:
             longer_periods = periods_sorted[base_index + 1 :]
             for p in longer_periods:
                 copied = dict(base_row)
                 copied["FRVP_PERIOD_TYPE"] = p
-                copied["BASED_PERIOD"] = base_period  # GUARANTEE
-                # If you want unique runtime per copied row, uncomment:
-                # copied["RUNTIME"] = datetime.now().strftime("%d-%m-%Y %H:%M")
+                copied["BASED_PERIOD"] = base_period
                 out_rows.append(copied)
                 copied_cnt += 1
+            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ✅ Copied {copied_cnt} longer periods")
 
-        inserted = self.repo.insert_ind_frvp_rows(out_rows)
+        # ---- INSERT ----
+        if not out_rows:
+            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  NO ROWS TO INSERT")
+            return 0
 
-        print(
-            f"[FRVP {exchange} {idx}/{total}] {symbol}: inserted_rows={inserted} "
-            f"base_period={base_period} short={len(short_periods)} copied={copied_cnt}"
+        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: Inserting {len(out_rows)} rows into {target_schema}.{target_table}")
+        
+        try:
+            inserted = self.repo.insert_ind_frvp_rows(
+                rows=out_rows,
+                schema=target_schema,
+                table=target_table,
             )
+            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ✅ Inserted {inserted} rows")
+            return inserted
+        except Exception as e:
+            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ❌ INSERT ERROR: {str(e)[:150]}")
+            raise
 
     def _compute_period_row(
         self,
         exchange: str,
         symbol: str,
+        source_schema: str,
         source_table: str,
         period: str,
         end_ts: datetime,
@@ -238,22 +309,17 @@ class IndFrvPocProfileService:
         based_period: Optional[str],
         latest_close: Optional[float],
     ) -> Optional[Dict[str, Any]]:
-        """
-        Computes one FRVP row for a single period.
-        FRVP math is NOT changed.
-
-        forced_peak_ts:
-          - None => compute peak_ts via SQL in that period window
-          - datetime => use given peak_ts directly (BASE optimization)
-        """
+        """Computes one FRVP row for a single period."""
+        
         period = period.strip()
-        based_period = (based_period or period).strip()  # GUARANTEE not blank
+        based_period = (based_period or period).strip()
 
         if forced_peak_ts is None:
             delta = self._period_to_delta(period)
             window_start = (pd.Timestamp(end_ts) - delta).to_pydatetime()
 
             peak_ts = self.repo.get_peak_ts_in_window(
+                schema=source_schema,
                 table=source_table,
                 symbol=symbol,
                 start_ts=window_start,
@@ -267,8 +333,9 @@ class IndFrvPocProfileService:
         else:
             peak_dt = forced_peak_ts
 
-        # Fetch only peak_dt -> end_ts OHLCV
+        # Fetch OHLCV
         rows = self.repo.fetch_ohlcv_between_no_rowid(
+            schema=source_schema,
             table=source_table,
             symbol=symbol,
             start_ts=peak_dt,
@@ -289,21 +356,24 @@ class IndFrvPocProfileService:
         row_count = int(len(df_final))
         day_count = int(df_final["TS"].dt.date.nunique())
 
-        # Fetch ROW_ID only for the peak point
+        # Get ROW_ID at peak
         highest_row_id = self.repo.get_row_id_at_ts(
+            schema=source_schema,
             table=source_table,
             symbol=symbol,
             ts_value=peak_dt,
             ts_col="TS",
         )
         highest_value = self.repo.get_high_at_ts(
+            schema=source_schema,
             table=source_table,
             symbol=symbol,
             ts_value=peak_dt,
             ts_col="TS",
             high_col="HIGH",
         )
-        # IMPORTANT: do not change FRVP math
+        
+        # FRVP Math
         math_df = df_final.rename(columns={"TS": "DATETIME"})
         result = calculate_tv_frvp_v2(
             math_df[["OPEN", "HIGH", "LOW", "CLOSE", "VOLUME"]].copy(),
@@ -377,15 +447,10 @@ class IndFrvPocProfileService:
         raise ValueError(f"Unsupported period: {period}")
 
     def _period_sort_score(self, period: str) -> int:
-        """
-        Sorting helper only (short -> long).
-        Uses an approximate mapping; does NOT affect actual date math.
-        """
         d = self._period_to_delta(period)
         years = d.years or 0
         months = d.months or 0
         days = d.days or 0
-        # relativedelta has no .weeks reliably; weeks become days in most cases
         return years * 100000 + months * 1000 + days
 
     def _sort_periods_short_to_long(self, periods: List[str]) -> List[str]:
@@ -394,6 +459,5 @@ class IndFrvPocProfileService:
             if p and str(p).strip():
                 cleaned.append(str(p).strip())
 
-        # Deduplicate while preserving "first seen"
         cleaned = list(dict.fromkeys(cleaned))
         return sorted(cleaned, key=self._period_sort_score)
