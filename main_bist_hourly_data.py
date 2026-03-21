@@ -17,7 +17,7 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistHourlyDataPipelineFlags(
-        ingest=False,
+        ingest=True,
         main_provider="tvdatafeed",
         alternative_provider="yahooquery",
         enable_fallback=True,
@@ -28,19 +28,19 @@ async def main():
         max_concurrent_symbols=3,
 
          # flags SYNC
-        sync_archive_to_working = False,
-        trim_history = False,
-        build_focus_dataset=False,
-        run_dq = False,
+        sync_archive_to_working = True,
+        trim_history = True,
+        build_focus_dataset=True,
+        run_dq = True,
         
         
         #=================================================================#
         # INDICATOR FLAGS
         #=================================================================#
 
-        bar_status=False,
-        run_frvp=False,
-        run_convert_daily = False,
+        bar_status=True,
+        run_frvp=True,
+        run_convert_daily = True,
         run_ema_ind = True,
         run_vwap_ind = True,
         run_rsi_ind = True,

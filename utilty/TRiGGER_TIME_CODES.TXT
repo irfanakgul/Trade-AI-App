@@ -8,12 +8,6 @@ rm -f /tmp/tradeai_*.lock
 
 ## Printleri takip etmek icin.
 tail -f logs/bist_daily_calc.out.log
-tail -f logs/bist_indicators.out.log
-tail -f logs/bist_1min_batch.out.log
-
-
-tail -f logs/usa_1min_batch.out.log
-tail -f logs/usa_indicators.out.log
 
 
 ## calisan durdurmak icin> 

@@ -3,51 +3,44 @@ run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
 poll_interval_seconds: 60
 
 jobs:
-   - name: initial_scope_clone
-    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
-    at: "02:00"
+  - name: initial_scope_clone
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
+    at: "18:23"
     cmd: ".venv/bin/python -u initial_clone_symbol_list_all.py"
     lock: "initial_scope_clone_lock"
 
-
   - name: bist_hourly
-    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
-    at: "02:00"
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
+    at: "18:26"
     cmd: ".venv/bin/python -u main_bist_hourly_data.py"
     lock: "bist_hourly_lock"
 
-    - name: ams_hourly
-    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
+  - name: ams_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
     at: "02:00"
     cmd: ".venv/bin/python -u main_ams_hourly_data.py"
     lock: "ams_hourly_lock"
 
-
-    - name: nasdaq_hourly
-    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
+  - name: nasdaq_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
     at: "02:00"
     cmd: ".venv/bin/python -u main_nasdaq_hourly_data.py"
     lock: "nasdaq_hourly_lock"
 
-
-    - name: nyse_hourly
-    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
+  - name: nyse_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
     at: "02:00"
     cmd: ".venv/bin/python -u main_nyse_hourly_data.py"
     lock: "nyse_hourly_lock"
 
-
-    - name: crypto_hourly
-    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
+  - name: crypto_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
     at: "02:00"
     cmd: ".venv/bin/python -u main_crypto_hourly_data.py"
     lock: "crypto_hourly_lock"
 
-
-    - name: assets_hourly
-    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
+  - name: assets_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
     at: "02:00"
     cmd: ".venv/bin/python -u main_assets_hourly_data.py"
     lock: "assets_hourly_lock"
-
-

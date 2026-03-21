@@ -47,9 +47,9 @@ async def main():
         # INDICATOR FLAGS
         #=================================================================#
 
-        bar_status=False,
-        run_frvp=False,
-        run_convert_daily = False,
+        bar_status=True,
+        run_frvp=True,
+        run_convert_daily = True,
         run_ema_ind = True,
         run_vwap_ind = True,
         run_rsi_ind = True,
