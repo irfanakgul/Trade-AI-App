@@ -517,8 +517,9 @@ async def run_nasdaq_hourly_data_pipeline(repo, flags: NasdaqHourlyDataPipelineF
             schema='gold',
             table='nasdaq_master_combined_indicators',
             sheet_name= 'MASTER_IND_nasdaq',
-            replace_append = 'replace')
+            replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
-        pass
+        print('❌ [MASTERFILE] skipped!')
+

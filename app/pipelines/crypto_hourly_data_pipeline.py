@@ -524,8 +524,8 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             schema='gold',
             table='crypto_master_combined_indicators',
             sheet_name= 'MASTER_IND_CRYPTO',
-            replace_append = 'replace')
+            replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
-        pass
+        print('❌ [MASTERFILE] skipped!')

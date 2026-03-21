@@ -523,8 +523,8 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             schema='gold',
             table='bist_master_combined_indicators',
             sheet_name= 'MASTER_IND_BIST',
-            replace_append = 'replace')
+            replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
-        pass
+        print('❌ [MASTERFILE] skipped!')

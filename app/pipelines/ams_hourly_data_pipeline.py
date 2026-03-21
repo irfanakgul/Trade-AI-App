@@ -521,12 +521,11 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
             schema='gold',
             table='ams_master_combined_indicators',
             sheet_name= 'MASTER_IND_AMS',
-            replace_append = 'replace')
+            replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
         
         print(f"✅✅✅  [IND-MASTER] AMS DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
-        pass
-
+        print('❌ [MASTERFILE] skipped!')
 
 
     

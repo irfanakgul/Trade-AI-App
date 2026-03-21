@@ -515,8 +515,8 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             schema='gold',
             table='assets_master_combined_indicators',
             sheet_name= 'MASTER_IND_ASSETS',
-            replace_append = 'replace')
+            replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
         
         print(f"✅✅✅  [IND-MASTER] ASSETS DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
-        pass
+        print('❌ [MASTERFILE] skipped!')

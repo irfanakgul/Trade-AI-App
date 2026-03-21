@@ -516,8 +516,9 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
             schema='gold',
             table='nyse_master_combined_indicators',
             sheet_name= 'MASTER_IND_nyse',
-            replace_append = 'replace')
+            replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
-        pass
+        print('❌ [MASTERFILE] skipped!')
+
