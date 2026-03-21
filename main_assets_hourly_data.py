@@ -40,8 +40,21 @@ async def main():
         build_focus_dataset = True,
 
         # dq
-        run_dq = True
+        run_dq = True,
 
+
+        #=================================================================#
+        # INDICATOR FLAGS
+        #=================================================================#
+
+        bar_status=False,
+        run_frvp=False,
+        run_convert_daily = False,
+        run_ema_ind = True,
+        run_vwap_ind = True,
+        run_rsi_ind = True,
+        run_mfi_ind = True,
+        run_combined_indicators = True,
 
     )
 

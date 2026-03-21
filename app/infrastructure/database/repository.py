@@ -1783,6 +1783,7 @@ class PostgresRepository:
         pandas.DataFrame
         """
 
+        now_str = datetime.now().strftime('%d-%m-%Y %H:%M')
 
         query = text(f"""
             SELECT *
@@ -1791,6 +1792,7 @@ class PostgresRepository:
 
         with self.engine.connect() as conn:
             df = pd.read_sql_query(query, conn)
+            df['RUNTIME'] = now_str
 
         if not sheet_name:
             raise ValueError("sheet_name must be provided when write_to_google=True")
@@ -2598,13 +2600,13 @@ class PostgresRepository:
             Table name to compare against
         
         comp_col : str
-            Column name in comparison table to filter on (e.g., 'STATUS', 'DATA_QUALITY')
+            Column name in comparison table to filter on (e.g., 'BAR_STATUS', 'DATA_QUALITY')
         
         comp_value : str
-            Value to match in comp_col (e.g., 'ACTIVE', 'VALID')
+            Value to EXCLUDE/MARK AS BAD (e.g., 'RED' - symboller RED ise OUT_OF_SCOPE=TRUE)
         
         reason : str
-            Elimination reason to store in OOS_REASON column
+            Elimination reason to store/append to OOS_REASON column
         
         main_symbol_schema : str
             Schema of main symbol list source
@@ -2618,24 +2620,34 @@ class PostgresRepository:
 
         Logic:
         ------
+        🔴 MARK BAD VALUES:
         1. Looks for symbols in compare_table WHERE comp_col = comp_value
-        2. Symbols NOT found in filtered compare set are marked OUT_OF_SCOPE = True
-        3. Already eliminated symbols (OUT_OF_SCOPE = True) are never overwritten
-        4. Symbol list never shrinks — only flags are updated
+        2. Symbols FOUND with this value are marked OUT_OF_SCOPE = True
+        3. OOS_REASON is SET or APPENDED (if already has reason, append with ||)
+        4. IN_SCOPE_FOR_EMA_RSI is NEVER touched - completely independent
+        5. Already eliminated symbols can get multiple reasons appended
+        6. Symbol list never shrinks — only flags are updated
         
         Example:
         --------
+        # RED bar status olan symboller elenir (OUT_OF_SCOPE=TRUE)
         update_focus_symbol_scope_filtered(
             exchange='BINANCE',
-            compare_schema='raw',
-            compare_table='daily_bar_data',
-            comp_col='DATA_QUALITY_STATUS',
-            comp_value='PASS',
-            reason='Failed data quality check',
+            compare_schema='silver',
+            compare_table='IND_BAR_STATUS',
+            comp_col='BAR_STATUS',
+            comp_value='RED',
+            reason='bar status is red',
             main_symbol_schema='gold',
             main_symbol_table='symbol_master',
             drop_and_recreate=False
         )
+        
+        Çalıştıktan sonra:
+        - RED olan symboller OUT_OF_SCOPE=TRUE, OOS_REASON="bar status is red"
+        
+        Eğer aynı sembol başka nedenle elenmek istenirse:
+        - OOS_REASON="bar status is red || failed data quality check"
         """
 
         src_fqn = f'{main_symbol_schema}."{main_symbol_table}"'
@@ -2681,24 +2693,30 @@ class PostgresRepository:
                 conn.execute(q_create_if_not_exists)
 
             # ═══════════════════════════════════════════════════════════════════════════════
-            # STEP 2: Update flag columns with FILTERED comparison
+            # STEP 2: Update OUT_OF_SCOPE flag - Mark symbols with bad value
             # 
-            # KEY DIFFERENCE: Compare table is filtered by comp_col = comp_value
-            # Only symbols that exist in the FILTERED result set are considered "in scope"
+            # 🔧 LOGIC:
+            # If symbol EXISTS in compare_table WITH comp_value → Mark OUT_OF_SCOPE=TRUE
+            # OOS_REASON: If NULL/empty → SET reason, ELSE APPEND with ||
+            # IN_SCOPE_FOR_EMA_RSI: NEVER TOUCHED (completely independent)
             # ═══════════════════════════════════════════════════════════════════════════════
             
             q_update = text(f"""
                 UPDATE {tgt_fqn} t
                 SET
                     "OUT_OF_SCOPE" = TRUE,
-                    "OOS_REASON"   = :reason
+                    "OOS_REASON" = CASE 
+                        WHEN t."OOS_REASON" IS NULL OR t."OOS_REASON" = ''
+                        THEN :reason
+                        ELSE t."OOS_REASON" || ' || ' || :reason
+                    END
                 WHERE t."EXCHANGE" = :exchange
                 AND t."OUT_OF_SCOPE" = FALSE
-                AND NOT EXISTS (
+                AND EXISTS (
                     SELECT 1
                     FROM {cmp_fqn} c
                     WHERE c."SYMBOL" = t."SYMBOL"
-                    AND c."{comp_col}" = :comp_value
+                    AND c."{comp_col}" != :comp_value
                 )
             """)
             conn.execute(q_update, {
@@ -2747,3 +2765,23 @@ class PostgresRepository:
             f"Remaining: {remaining} | "
             f"Reason: '{reason}'"
         )
+
+        return {
+            "exchange": exchange,
+            "source": f"{main_symbol_schema}.{main_symbol_table}",
+            "target": "silver.cloned_focus_symbol_list",
+            "compare": f"{compare_schema}.{compare_table}",
+            "compare_filter": {
+                "column": comp_col,
+                "value": comp_value,
+                "meaning": "MARKS SYMBOLS WITH THIS VALUE AS OUT_OF_SCOPE (BAD)"
+            },
+            "drop_and_recreate": drop_and_recreate,
+            "mode": mode,
+            "total": total,
+            "eliminated": eliminated,
+            "remaining": remaining,
+            "eliminated_symbols": eliminated_syms,
+            "reason": reason,
+            "note": "OOS_REASON values are APPENDED with ' || ' separator for multiple elimination reasons",
+        }

@@ -19,7 +19,7 @@ async def main():
     flags = EuronextHourlyDataPipelineFlags(
 
         # flags INGESTION
-        ingest=False,
+        ingest=True,
         main_provider="tvdatafeed",
         alternative_provider="yahooquery",
         enable_fallback=True,
@@ -30,16 +30,29 @@ async def main():
         max_concurrent_symbols=4,
 
         # flags SYNC
-        sync_archive_to_working = False,
+        sync_archive_to_working = True,
         
         # flags TRIM365
-        trim_history = False,
+        trim_history = True,
 
         # flags ind build dataset
-        build_focus_dataset = False,
+        build_focus_dataset = True,
         
         # flags ind build dataset
-        run_dq=True
+        run_dq=True,
+
+        #=================================================================#
+        # INDICATOR FLAGS
+        #=================================================================#
+
+        bar_status=False,
+        run_frvp=False,
+        run_convert_daily = False,
+        run_ema_ind = True,
+        run_vwap_ind = True,
+        run_rsi_ind = True,
+        run_mfi_ind = True,
+        run_combined_indicators = True,
     )
 
     await run_euronext_hourly_data_pipeline(repo, flags,exchange='EURONEXT')

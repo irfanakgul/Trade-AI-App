@@ -97,6 +97,16 @@ class IndBarStatusService:
                     }
                 )
 
+            # 🔍 DEBUG: GREEN, RED, AMBER sayılarını yazdır
+            green_count = sum(1 for row in out_rows if row["BAR_STATUS"] == "GREEN")
+            red_count = sum(1 for row in out_rows if row["BAR_STATUS"] == "RED")
+            amber_count = sum(1 for row in out_rows if row["BAR_STATUS"] == "AMBER")
+            
+            print(
+                f"[BAR_STATUS DEBUG] exchange={exchange} "
+                f"GREEN={green_count} RED={red_count} AMBER={amber_count}"
+            )
+
             inserted = self.repo.insert_ind_bar_status_rows(
                 target_schema=bs_target_schema,
                 target_table=bs_target_table,

@@ -148,7 +148,6 @@ class IndFrvPocProfileService:
             print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  NO DATA in source table")
             return 0
         
-        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: max_ts={max_ts}")
         
         if cutt_off_date:
             cutoff_dt = pd.to_datetime(cutt_off_date)
@@ -164,7 +163,6 @@ class IndFrvPocProfileService:
             ts_col="TS",
             close_col="CLOSE",
         )
-        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: latest_close={latest_close}")
 
         # Find global peak in LONGEST window
         longest_p = periods_sorted[-1]
@@ -185,7 +183,6 @@ class IndFrvPocProfileService:
             return 0
 
         global_peak_dt = pd.to_datetime(global_peak_ts).to_pydatetime()
-        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: global_peak_ts={global_peak_dt}")
 
         # Determine BASE_PERIOD
         base_period = longest_p
@@ -199,7 +196,6 @@ class IndFrvPocProfileService:
                 base_index = i
                 break
 
-        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: base_period={base_period} (index={base_index})")
 
         out_rows: List[Dict[str, Any]] = []
 
@@ -221,7 +217,6 @@ class IndFrvPocProfileService:
                 )
                 if row:
                     out_rows.append(row)
-                    print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ✅ Computed {p}")
                 else:
                     print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  No data for period {p}")
             except Exception as e:
@@ -252,7 +247,6 @@ class IndFrvPocProfileService:
             if base_row:
                 base_row["BASED_PERIOD"] = base_row.get("BASED_PERIOD") or base_period
                 out_rows.append(base_row)
-                print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ✅ Computed BASE ({base_period})")
             else:
                 print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  No data for BASE period")
         except Exception as e:
@@ -275,14 +269,11 @@ class IndFrvPocProfileService:
                 copied["BASED_PERIOD"] = base_period
                 out_rows.append(copied)
                 copied_cnt += 1
-            print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ✅ Copied {copied_cnt} longer periods")
 
         # ---- INSERT ----
         if not out_rows:
             print(f"[FRVP {exchange} {idx}/{total}] {symbol}: ⚠️  NO ROWS TO INSERT")
             return 0
-
-        print(f"[FRVP {exchange} {idx}/{total}] {symbol}: Inserting {len(out_rows)} rows into {target_schema}.{target_table}")
         
         try:
             inserted = self.repo.insert_ind_frvp_rows(

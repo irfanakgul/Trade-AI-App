@@ -99,6 +99,6 @@ def calculate_mfi(
             "MFI", "MFI_YESTERDAY", "MFI_12DAY_AVG", "MFI_DIRECTION"
         ])
 
-    result = pd.concat(result_frames, ignore_index=True)
+    result = pd.concat(result_frames, ignore_index=True).reset_index(drop=True)
 
-    return result[result["MFI_DIRECTION"] == "Upward"].reset_index(drop=True)
+    return result

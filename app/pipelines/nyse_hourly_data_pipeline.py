@@ -16,6 +16,17 @@ from app.services.exchange_hourly_ingestion_service import (
 from datetime import datetime,date
 from app.services.dq_v2_service import DQV2Service, DQRunConfig, DQTableConfig
 
+# indicator modules
+from app.infrastructure.database.repository import PostgresRepository
+from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
+from app.services.ind_ema_focus_service import IndEmaFocusService
+from app.services.ind_vwap_focus_service import IndVwapFocusService # type: ignore
+from app.services.email_service import send_email
+from app.services.ind_bar_status_service import IndBarStatusService # type: ignore
+from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore # type: ignore
+from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
+from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
+
 
 @dataclass(frozen=True)
 class NyseHourlyDataPipelineFlags:
@@ -50,6 +61,20 @@ class NyseHourlyDataPipelineFlags:
     build_focus_dataset: bool = False
     build_sample_dataset: bool = False
     run_dq: bool = False
+
+    #-------------------------------------
+    # indicator flags
+    #-------------------------------------
+    bar_status: bool = True
+    run_frvp: bool = True
+    run_convert_daily: bool = True
+    run_ema_ind: bool = True
+    converted_schema:str = 'silver'
+    converted_table:str = 'converted_daily_dataset_nyse'
+    run_vwap_ind:bool = True
+    run_rsi_ind:bool = True
+    run_mfi_ind:bool = True
+    run_combined_indicators:bool = True
 
 
 def _build_main_provider(name: str):
@@ -299,3 +324,200 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
         print(f"[DQ] NYSE completed. DQ_RUN_ID={dq_run_id}")
     else:
         print("❌ [DQ] NYSE skipped")
+
+    # ============================================================================================
+    # INDICATOR CHAPTER
+    # ============================================================================================
+
+    #--------------------------
+    # IND-1) IND BAR STATUS CALC
+    #--------------------------
+    if flags.bar_status:
+        print("[IND-BAR_STATUS] nyse started for exchange={exchange}")
+
+        svc = IndBarStatusService(repo=repo)
+        svc.run(
+            exchange = exchange,
+            source_schema=flags.target_schema,
+            source_table=flags.target_table,
+            bs_target_schema='silver',
+            bs_target_table='IND_BAR_STATUS',
+            is_truncate_scope=True,
+        )
+        # adding elemination reason
+        repo.update_focus_symbol_scope_filtered(
+            exchange=exchange,
+            compare_schema = 'silver',
+            compare_table='IND_BAR_STATUS',
+            comp_col='BAR_STATUS',
+            comp_value='GREEN', # green olmayanlari scope disi birakacak!
+            reason='bar status red | close is lower than open',
+            main_symbol_schema = 'prod',
+            main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+            drop_and_recreate = False
+        )
+    else:
+        print(f"❌ [IND-BAR_STATUS] nyse skipped for exchange={exchange}")
+    
+    #---------------------------------
+    # IND-2) IND FRV_ POC VAL VAH CALC
+    #---------------------------------
+    
+    if flags.run_frvp:
+        print(f"[IND-FRVP] nyse started ({exchange})...")
+
+        svc = IndFrvPocProfileService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            periods=["2year", "1year", "6months", "4months"],
+            frvp_source_schema='silver',
+            frvp_source_table='indicators_nyse_focus_dataset',
+            frvp_target_schema='silver',
+            frvp_target_table='IND_FRV_POC_PROFILE',
+            cutt_off_date=None
+            )
+        
+        #adding elemination reason
+        repo.update_focus_symbol_scope_filtered(
+            exchange=exchange,
+            compare_schema = 'silver',
+            compare_table='IND_FRV_POC_PROFILE',
+            comp_col="IN_SCOPE_FOR_EMA_RSI",
+            comp_value='True', # true olmayanlar scope disi kalacak demek unutma!
+            reason='4 poc values are lower than latest close price',
+            main_symbol_schema = 'prod',
+            main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+            drop_and_recreate = False
+        )
+    else:
+        print(f"❌ [IND-FRVP] nyse skipped for exchange={exchange}")
+
+    #---------------------------------
+    # IND-3) run_convert_daily
+    #---------------------------------
+    if flags.run_convert_daily:
+        print(f"[IND-CONVERT_DAILY] nyse started ({exchange})...")
+
+        stats = repo.build_converted_daily_for_ema_rsi_scope(
+            exchange=exchange,
+            interval='hourly',  
+            start_trading_days_back=130,
+            source_schema='silver',
+            source_table='indicators_nyse_focus_dataset',
+            ts_col="TS",
+            high_col="HIGH",
+            target_schema=flags.converted_schema,
+            target_table=flags.converted_table,#'converted_daily_dataset_nyse',
+        )
+        print(
+            f'[IND-CONVERT] Converted-daily built. exchange={stats["exchange"]} '
+            f'symbols: {stats["before_symbols"]} -> {stats["after_symbols"]}, '
+            f'rows={stats["after_rows"]} target={stats["target"]}',
+            flush=True
+        )
+    else:
+        print(f"❌ [IND-CONVERT] nyse skipped for exchange={exchange}", flush=True)
+
+
+    #---------------------------------
+    # IND-4) EMA CALC
+    #---------------------------------
+    if flags.run_ema_ind:
+        print(f"[IND-EMA] nyse started ({exchange})...")
+
+        svc = IndEmaFocusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.converted_schema,
+            input_table=flags.converted_table,
+            ema_calc_history_days=120,
+            ema_signal_lookback_days=20,
+        )
+        
+    else:
+        print('❌ [IND-EMA] nyse skipped!')
+
+    #---------------------------------
+    # IND-5) WVAP CALC
+    #---------------------------------
+    if flags.run_vwap_ind:
+        print(f"[IND-VWAP] nyse started ({exchange})...")
+
+        svc = IndVwapFocusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema=flags.converted_schema,
+            source_table=flags.converted_table,
+            target_schema='silver',
+            target_table='IND_VWAP_FOCUS',
+            lookback_month=4,
+        )
+    else:
+        print('❌ [IND-VWAP] nyse skipped!')
+
+    #---------------------------------
+    # IND-6) RSI CALC
+    #---------------------------------
+    if flags.run_rsi_ind:
+        print(f"[IND-RSI] nyse started ({exchange})...")
+
+        svc = IndRsiFocusService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.converted_schema,
+            input_table=flags.converted_table,
+            rsi_calc_history_days=120,
+            rsi_signal_lookback_days=20,
+        )
+    else:
+        print('❌ [IND-RSI] nyse skipped!')
+
+    #---------------------------------
+    # IND-7) MFI CALC
+    #---------------------------------
+    if flags.run_mfi_ind:
+        print(f"[IND-MFI] nyse started ({exchange})...")
+        svc = IndMfiFocusService(repo=repo)
+        
+        svc.run(
+            exchange=exchange,
+            input_schema=flags.converted_schema,
+            input_table=flags.converted_table,
+            mfi_calc_history_days=120,
+        )
+        
+    else:
+        print('❌ [IND-MFI] nyse skipped!')
+
+    #---------------------------------
+    # IND-8) MASTER IND FILE
+    #---------------------------------
+    
+    if flags.run_combined_indicators:
+        svc = IndMasterCombinedIndicatorsService(repo=repo)
+
+        svc.run(
+            exchange=exchange,
+            target_schema='gold',
+            target_table='nyse_master_combined_indicators',
+            log_schema='logs',
+            log_table='log_nyse_master_combined_indicators',
+
+            frvp_table="IND_FRV_POC_PROFILE",
+            bs_table="IND_BAR_STATUS",
+            ema_table="IND_EMA_FOCUS",
+            rsi_table="IND_RSI_FOCUS",
+            mfi_table="IND_MFI_FOCUS",
+            vwap_table="IND_VWAP_FOCUS",
+        )
+
+        # write to gg
+        repo.fn_repo_write_to_google_generic(
+            schema='gold',
+            table='nyse_master_combined_indicators',
+            sheet_name= 'MASTER_IND_nyse',
+            replace_append = 'replace')
+        
+        print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
+    else:
+        pass

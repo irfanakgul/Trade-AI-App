@@ -7,13 +7,23 @@ import pandas as pd
 def detect_tick_size(df: pd.DataFrame) -> float:
     prices = pd.concat([df["OPEN"], df["HIGH"], df["LOW"], df["CLOSE"]], ignore_index=True)
     uniq = np.sort(prices.dropna().unique())
+    
     if uniq.size < 2:
-        return 0.01
+        return 0.00000001  # 1e-8 für sehr kleine Preise
+    
     diffs = np.diff(uniq)
     diffs = diffs[diffs > 0]
+    
     if diffs.size == 0:
-        return 0.01
-    return float(np.round(diffs.min(), 6))
+        return 0.00000001  # Fallback für sehr kleine Preise
+    
+    tick = float(np.round(diffs.min(), 8))  # ← 6 yerine 8 decimal
+    
+    # Eğer tick hala 0 veya çok küçük ise fallback
+    if tick <= 0 or not np.isfinite(tick):
+        tick = 0.00000001  # 1e-8
+    
+    return tick
 
 
 def calculate_tv_frvp_v2_fast(df: pd.DataFrame, value_area_pct: float = 68, row_size: int = 1) -> dict:

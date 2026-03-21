@@ -81,10 +81,6 @@ class BinanceHourlyDataPipelineFlags:
     run_combined_indicators:bool = True
 
 
-
-    
-
-
 def _build_provider(name: str):
     name = name.lower().strip()
 
@@ -356,13 +352,13 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             bs_target_table='IND_BAR_STATUS',
             is_truncate_scope=True,
         )
-        #adding elemination reason
+        # adding elemination reason
         repo.update_focus_symbol_scope_filtered(
             exchange=exchange,
             compare_schema = 'silver',
             compare_table='IND_BAR_STATUS',
             comp_col='BAR_STATUS',
-            comp_value='RED',
+            comp_value='GREEN', # green olmayanlari scope disi birakacak!
             reason='bar status red | close is lower than open',
             main_symbol_schema = 'prod',
             main_symbol_table = 'FOCUS_SYMBOLS_ALL',
@@ -395,7 +391,7 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             compare_schema = 'silver',
             compare_table='IND_FRV_POC_PROFILE',
             comp_col="IN_SCOPE_FOR_EMA_RSI",
-            comp_value='False',
+            comp_value='True', # true olmayanlar scope disi kalacak demek unutma!
             reason='4 poc values are lower than latest close price',
             main_symbol_schema = 'prod',
             main_symbol_table = 'FOCUS_SYMBOLS_ALL',
@@ -522,3 +518,14 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             mfi_table="IND_MFI_FOCUS",
             vwap_table="IND_VWAP_FOCUS",
         )
+
+        # write to gg
+        repo.fn_repo_write_to_google_generic(
+            schema='gold',
+            table='crypto_master_combined_indicators',
+            sheet_name= 'MASTER_IND_CRYPTO',
+            replace_append = 'replace')
+        
+        print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
+    else:
+        pass
