@@ -7,7 +7,13 @@ rm -f /tmp/tradeai_*.lock
 .venv/bin/python -u -m app.scheduler.daemon --config app/scheduler/schedule.yaml
 
 ## Printleri takip etmek icin.
-tail -f logs/bist_daily_calc.out.log
+tail -f logs/initial_scope_clone.out.log
+tail -f logs/bist_hourly.out.log
+tail -f logs/nasdaq_hourly.out.log
+tail -f logs/nyse_hourly.out.log
+tail -f logs/ams_hourly.out.log
+tail -f logs/crypto_hourly.out.log
+tail -f logs/assets_hourly.out.log
 
 
 ## calisan durdurmak icin> 
