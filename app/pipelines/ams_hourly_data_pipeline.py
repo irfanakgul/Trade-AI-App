@@ -251,8 +251,9 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
     if flags.run_dq:
         print("[DQ] AMS starting...")
 
-        dq = DQV2Service(repo)
+        expected_bar_count = 6
 
+        dq = DQV2Service(repo)
         dq_run_cfg = DQRunConfig(
             job_name="ams_hourly_data_pipeline",
             active_table="dq_check_overview_ams",
@@ -274,7 +275,7 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
                 expected_close_hour=17,        # change if your market-close convention differs
                 expected_close_minute=00,
                 end_tolerance_minutes=0,
-                bar_threshold=24,
+                bar_threshold=expected_bar_count,
                 checks=(
                     "END_DATE_CHECK",
                     "NULL_CHECK",
@@ -294,7 +295,7 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
                 expected_close_hour=17,
                 expected_close_minute=00,
                 end_tolerance_minutes=0,
-                bar_threshold=24,
+                bar_threshold=expected_bar_count,
                 checks=(
                     "END_DATE_CHECK",
                     "NULL_CHECK",
@@ -314,7 +315,7 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
                 expected_close_hour=17,
                 expected_close_minute=00,
                 end_tolerance_minutes=0,
-                bar_threshold=24,
+                bar_threshold=expected_bar_count,
                 checks=(
                     "END_DATE_CHECK",
                     "NULL_CHECK",
@@ -326,6 +327,15 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
 
         dq_run_id = dq.run_exchange_checks(dq_run_cfg, tables)
         print(f"[DQ] AMS completed. DQ_RUN_ID={dq_run_id}")
+
+        # write to gg
+        repo.fn_repo_write_to_google_generic(
+            schema='logs',
+            table='dq_check_overview_ams',
+            sheet_name= 'DQ_LOG',
+            replace_append = 'append'
+            # replace_append = os.getenv("MASTERFILE_APPEND_REPLACE")
+            )
     else:
         print("❌ [DQ] AMS skipped")
 

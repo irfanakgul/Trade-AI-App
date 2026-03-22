@@ -322,6 +322,15 @@ async def run_nasdaq_hourly_data_pipeline(repo, flags: NasdaqHourlyDataPipelineF
 
         dq_run_id = dq.run_exchange_checks(dq_run_cfg, tables)
         print(f"[DQ] nasdaq completed. DQ_RUN_ID={dq_run_id}")
+
+        # write to gg
+        repo.fn_repo_write_to_google_generic(
+            schema='logs',
+            table='dq_check_overview_nasdaq',
+            sheet_name= 'DQ_LOG',
+            replace_append = 'append'
+            # replace_append = os.getenv("MASTERFILE_APPEND_REPLACE")
+            )
     else:
         print("❌ [DQ] nasdaq skipped")
 
@@ -516,7 +525,7 @@ async def run_nasdaq_hourly_data_pipeline(repo, flags: NasdaqHourlyDataPipelineF
         repo.fn_repo_write_to_google_generic(
             schema='gold',
             table='nasdaq_master_combined_indicators',
-            sheet_name= 'MASTER_IND_nasdaq',
+            sheet_name= 'MASTER_IND_NASDAQ',
             replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")

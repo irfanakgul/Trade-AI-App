@@ -330,6 +330,15 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
 
         dq_run_id = dq.run_exchange_checks(dq_run_cfg, tables)
         print(f"[DQ] CRYPTO completed. DQ_RUN_ID={dq_run_id}")
+
+        # write to gg
+        repo.fn_repo_write_to_google_generic(
+            schema='logs',
+            table='dq_check_overview_crypto',
+            sheet_name= 'DQ_LOG',
+            replace_append = 'append'
+            # replace_append = os.getenv("MASTERFILE_APPEND_REPLACE")
+            )
     else:
         print("❌ [DQ] CRYPTO skipped")
 

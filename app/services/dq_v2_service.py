@@ -116,7 +116,7 @@ class DQV2Service:
                 cfg=cfg,
             )
 
-        if cfg.interval == "1min" and "BAR_CHECK" in cfg.checks:
+        if cfg.interval != "daily" and "BAR_CHECK" in cfg.checks:
             self._insert_bar_failures(
                 dq_run_id=dq_run_id,
                 run_cfg=run_cfg,

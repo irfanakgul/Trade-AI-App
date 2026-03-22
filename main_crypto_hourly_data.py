@@ -23,21 +23,19 @@ async def main():
         #=================================================================#
 
         #data pull
-        ingest=True,
+        ingest=False,
         main_provider="binance_api",
         alternative_provider="tvdatafeed",
-        enable_fallback=True,
-        use_db_last_timestamp=True,
         start_date="2024-01-01",
         safe_days_back=1,
         main_provider_retries=2,
         max_concurrent_symbols=3,
 
         # prep
-        sync_archive_to_working = True,
-        trim_history = True,
-        build_focus_dataset= True,
-        run_dq = True,
+        sync_archive_to_working = False,
+        trim_history = False,
+        build_focus_dataset= False,
+        run_dq = False,
 
         #=================================================================#
         # INDICATOR FLAGS

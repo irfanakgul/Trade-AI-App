@@ -19,11 +19,9 @@ async def main():
     flags = OandaHourlyDataPipelineFlags(
 
         # flags ingest
-        ingest=True,
+        ingest=False,
         main_provider="tvdatafeed",
         alternative_provider="not_implemented",
-        enable_fallback=True,
-        use_db_last_timestamp=True,
         start_date="2024-01-01",
         safe_days_back=1,
         main_provider_retries=2,
@@ -31,13 +29,13 @@ async def main():
         
 
         # flags SYNC
-        sync_archive_to_working = True,
+        sync_archive_to_working = False,
         
         # flags TRIM365
-        trim_history = True,
+        trim_history = False,
 
         # flags build indicator focus dataset
-        build_focus_dataset = True,
+        build_focus_dataset = False,
 
         # dq
         run_dq = True,
@@ -47,14 +45,14 @@ async def main():
         # INDICATOR FLAGS
         #=================================================================#
 
-        bar_status=True,
-        run_frvp=True,
-        run_convert_daily = True,
-        run_ema_ind = True,
-        run_vwap_ind = True,
-        run_rsi_ind = True,
-        run_mfi_ind = True,
-        run_combined_indicators = True,
+        bar_status=False,
+        run_frvp=False,
+        run_convert_daily = False,
+        run_ema_ind = False,
+        run_vwap_ind = False,
+        run_rsi_ind = False,
+        run_mfi_ind = False,
+        run_combined_indicators = False,
 
     )
 
