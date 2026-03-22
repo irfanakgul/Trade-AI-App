@@ -1,5 +1,5 @@
 from app.services.email_service import send_email
-from app.services.telegram_bot_chat_service import *
+from app.services.telegram_bot_chat_service import telegram_send_message
 
 # send_email(
 #     to_email=["1irfanakgul@gmail.com","yasinyilmaz19@gmail.com","Pidatasmanba@gmail.com"],
@@ -13,4 +13,8 @@ from app.services.telegram_bot_chat_service import *
 #     action_link="https://docs.google.com/spreadsheets/d/1jdJkgQo1Y5tLFOUjI8Y_Ole8P4VArDtP0H-n5FJ-Zg4/edit?gid=1067836751#gid=1067836751"
 # )
 
-telegram_message_text("🚀 Selam genclik, nasilsiniz, ben botunuz :) ")
+
+telegram_send_message(
+    title="BUY SIGNAL",
+    text="Symbol: AAPL\nPrice: 182.34\nRSI: 28 → Oversold"
+)
