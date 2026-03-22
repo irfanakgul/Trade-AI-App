@@ -2401,8 +2401,17 @@ class PostgresRepository:
         with self.engine.begin() as conn:
             return int(conn.execute(q).scalar_one() or 0)
         
+    def get_dq_failed_symbols(self, exchange:str, table:str):
+        q = text(f'''
+            SELECT "SYMBOL"
+            FROM logs."{table}"
+            WHERE "EXCHANGE" = {exchange};
+        ''')
+        with self.engine.begin() as conn:
+            return int(conn.execute(q).scalar_one() or 0)
+        
     ########################################
-    # NEW SYSTEM 6 EXC
+    # NEW SYSTEM 6 EXCHANGE
     ########################################
 
 

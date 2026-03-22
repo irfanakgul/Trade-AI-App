@@ -35,6 +35,7 @@ async def main():
         build_focus_dataset=False,
         # dq
         run_dq = True,
+        dq_elemination = True,
 
         #=================================================================#
         # INDICATOR FLAGS

@@ -38,6 +38,7 @@ async def main():
         
         # flags ind build dataset
         run_dq=True,
+        dq_elemination = True,
 
         #=================================================================#
         # INDICATOR FLAGS

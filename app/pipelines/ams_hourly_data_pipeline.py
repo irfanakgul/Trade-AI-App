@@ -64,6 +64,7 @@ class EuronextHourlyDataPipelineFlags:
     build_focus_dataset: bool = False
     build_sample_dataset: bool = False
     run_dq: bool = False
+    dq_elemination: bool = False
 
     #-------------------------------------
     # indicator flags
@@ -336,6 +337,18 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
             replace_append = 'append'
             # replace_append = os.getenv("MASTERFILE_APPEND_REPLACE")
             )
+        
+
+        if flags.dq_elemination:
+            repo.update_focus_symbol_scope(
+                exchange=exchange,
+                compare_schema='logs',
+                compare_table='dq_check_overview_ams',
+                reason='DQ FAILED',
+                main_symbol_schema = 'prod',
+                main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+                drop_and_recreate = False
+            )
     else:
         print("❌ [DQ] AMS skipped")
 
@@ -532,6 +545,13 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
             table='ams_master_combined_indicators',
             sheet_name= 'MASTER_IND_AMS',
             replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
+        
+        # write to gg
+        repo.fn_repo_write_to_google_generic(
+            schema='silver',
+            table='cloned_focus_symbol_list',
+            sheet_name= 'ALL_SYMBOLS_STATUS',
+            replace_append = 'replace')
         
         print(f"✅✅✅  [IND-MASTER] AMS DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
