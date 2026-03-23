@@ -7,6 +7,8 @@ from app.pipelines.nyse_hourly_data_pipeline import (
     run_nyse_hourly_data_pipeline,
     NyseHourlyDataPipelineFlags,
 )
+from app.services.telegram_bot_chat_service import telegram_send_message
+
 
 
 async def main():
@@ -17,7 +19,7 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = NyseHourlyDataPipelineFlags(
-        ingest=False,
+        ingest=True,
         main_provider="tvdatafeed",
         alternative_provider="not_implemented",
         start_date="2024-01-01",
@@ -26,13 +28,13 @@ async def main():
         max_concurrent_symbols=2,
 
         # flags SYNC
-        sync_archive_to_working = False,
+        sync_archive_to_working = True,
         
         # flags TRIM365
-        trim_history = False,
+        trim_history = True,
 
         # flags indicator focus dataset prep
-        build_focus_dataset=False,
+        build_focus_dataset=True,
         
         # dq
         run_dq = True,
@@ -42,14 +44,14 @@ async def main():
         # INDICATOR FLAGS
         #=================================================================#
 
-        bar_status=False,
-        run_frvp=False,
-        run_convert_daily = False,
-        run_ema_ind = False,
-        run_vwap_ind = False,
-        run_rsi_ind = False,
-        run_mfi_ind = False,
-        run_combined_indicators = False,
+        bar_status=True,
+        run_frvp=True,
+        run_convert_daily = True,
+        run_ema_ind = True,
+        run_vwap_ind = True,
+        run_rsi_ind = True,
+        run_mfi_ind = True,
+        run_combined_indicators = True,
     )
 
     await run_nyse_hourly_data_pipeline(repo, flags,'NYSE')
@@ -57,3 +59,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    telegram_send_message(
+        title="PIPELINE run",
+        text="NYSE pipeline has been done!")

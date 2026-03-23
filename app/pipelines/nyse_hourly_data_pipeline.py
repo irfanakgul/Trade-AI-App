@@ -456,11 +456,12 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
         svc = IndVwapFocusService(repo=repo)
         svc.run(
             exchange=exchange,
-            source_schema=flags.converted_schema,
-            source_table=flags.converted_table,
+            source_schema=flags.target_schema,
+            source_table=flags.target_table,
             target_schema='silver',
             target_table='IND_VWAP_FOCUS',
-            lookback_month=4,
+            periods=["2year", "1year", "6months", "4months"],
+            is_truncate_scope=True,
         )
     else:
         print('❌ [IND-VWAP] nyse skipped!')

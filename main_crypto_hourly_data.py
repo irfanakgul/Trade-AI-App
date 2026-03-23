@@ -7,6 +7,7 @@ from app.pipelines.crypto_hourly_data_pipeline import (
     run_binance_hourly_data_pipeline,
     BinanceHourlyDataPipelineFlags,
 )
+from app.services.telegram_bot_chat_service import telegram_send_message
 
 
 async def main():
@@ -23,7 +24,7 @@ async def main():
         #=================================================================#
 
         #data pull
-        ingest=False,
+        ingest=True,
         main_provider="binance_api",
         alternative_provider="tvdatafeed",
         start_date="2024-01-01",
@@ -32,10 +33,10 @@ async def main():
         max_concurrent_symbols=3,
 
         # prep
-        sync_archive_to_working = False,
-        trim_history = False,
-        build_focus_dataset= False,
-        run_dq = False,
+        sync_archive_to_working = True,
+        trim_history = True,
+        build_focus_dataset= True,
+        run_dq = True,
         dq_elemination = True,
 
         #=================================================================#
@@ -57,3 +58,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    telegram_send_message(
+        title="PIPELINE run",
+        text="CRYPTO pipeline has been done!")

@@ -1,5 +1,6 @@
 import asyncio
 from dotenv import load_dotenv
+from app.services.telegram_bot_chat_service import telegram_send_message
 
 from app.infrastructure.database.connection import Database
 from app.infrastructure.database.repository import PostgresRepository
@@ -19,7 +20,7 @@ async def main():
     flags = EuronextHourlyDataPipelineFlags(
 
         # flags INGESTION
-        ingest=False,
+        ingest=True,
         main_provider="tvdatafeed",
         alternative_provider="yahooquery",
         start_date="2024-01-01",
@@ -28,15 +29,15 @@ async def main():
         max_concurrent_symbols=4,
 
         # flags SYNC
-        sync_archive_to_working = False,
+        sync_archive_to_working = True,
         
         # flags TRIM365
-        trim_history = False,
+        trim_history = True,
 
         # flags ind build dataset
-        build_focus_dataset = False,
+        build_focus_dataset = True,
         
-        # flags ind build dataset
+        # flags ind build dataset   
         run_dq=True,
         dq_elemination = True,
 
@@ -44,14 +45,14 @@ async def main():
         # INDICATOR FLAGS
         #=================================================================#
 
-        bar_status=False,
-        run_frvp=False,
-        run_convert_daily = False,
-        run_ema_ind = False,
-        run_vwap_ind = False,
-        run_rsi_ind = False,
-        run_mfi_ind = False,
-        run_combined_indicators = False,
+        bar_status=True,
+        run_frvp=True,
+        run_convert_daily = True,
+        run_ema_ind = True,
+        run_vwap_ind = True,
+        run_rsi_ind = True,
+        run_mfi_ind = True,
+        run_combined_indicators = True,
     )
 
     await run_euronext_hourly_data_pipeline(repo, flags,exchange='EURONEXT')
@@ -59,3 +60,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    telegram_send_message(
+        title="PIPELINE run",
+        text="EURONEXT pipeline has been done!")

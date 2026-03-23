@@ -1824,53 +1824,32 @@ class PostgresRepository:
             res = conn.execute(q, {"exchange": exchange})
         return int(res.rowcount or 0)
     
-    # vwap
-    def fetch_vwap_focus_source_data(
+    def fetch_vwap_source_data(
         self,
         source_schema: str,
         source_table: str,
         exchange: str,
-        lookback_month: int,
     ) -> List[Dict[str, Any]]:
         q = text(f'''
-            WITH symbol_last_ts AS (
-                SELECT
-                    "SYMBOL",
-                    MAX("TIMESTAMP") AS max_ts
-                FROM {source_schema}."{source_table}"
-                WHERE "EXCHANGE" = :exchange
-                GROUP BY "SYMBOL"
-            )
             SELECT
-                s."EXCHANGE",
-                s."SYMBOL",
-                s."TIMESTAMP",
-                s."HIGH",
-                s."VOLUME"
-            FROM {source_schema}."{source_table}" s
-            JOIN symbol_last_ts l
-            ON s."SYMBOL" = l."SYMBOL"
-            WHERE s."EXCHANGE" = :exchange
-            AND s."TIMESTAMP" >= (l.max_ts - make_interval(months => :lookback_month))
-            AND s."TIMESTAMP" <= l.max_ts
-            AND s."TIMESTAMP" IS NOT NULL
-            AND s."HIGH" IS NOT NULL
-            AND s."VOLUME" IS NOT NULL
-            AND s."VOLUME" >= 0
-            ORDER BY s."SYMBOL" ASC, s."TIMESTAMP" ASC
+                "EXCHANGE",
+                "SYMBOL",
+                "TIMESTAMP",
+                "HIGH",
+                "VOLUME"
+            FROM {source_schema}."{source_table}"
+            WHERE "EXCHANGE" = :exchange
+            AND "SYMBOL" IS NOT NULL
+            AND "TIMESTAMP" IS NOT NULL
+            AND "HIGH" IS NOT NULL
+            AND "VOLUME" IS NOT NULL
+            AND "VOLUME" >= 0
+            ORDER BY "SYMBOL" ASC, "TIMESTAMP" ASC
         ''')
         with self.engine.begin() as conn:
-            rows = conn.execute(
-                q,
-                {
-                    "exchange": exchange,
-                    "lookback_month": lookback_month,
-                }
-            ).fetchall()
-
+            rows = conn.execute(q, {"exchange": exchange}).fetchall()
         return [dict(r._mapping) for r in rows]
 
-    #insert vwap to sb
     def insert_ind_vwap_rows(
         self,
         target_schema: str,
@@ -1884,34 +1863,40 @@ class PostgresRepository:
             INSERT INTO {target_schema}."{target_table}" (
                 "EXCHANGE",
                 "SYMBOL",
+                "VWAP_PERIOD",
                 "START_TIME",
                 "END_TIME",
                 "HIGHEST_VALUE",
                 "HIGHEST_TIMESTAMP",
                 "VWAP",
+                "AVG_VOLUME_5D",
                 "AVG_VOLUME_10D",
                 "AVG_VOLUME_20D",
-                "AVG_VOLUME_30D",
+                "AVG_VOLUME_YESTERDAY",
+                "AVG_VOLUME_LASTDAY",
+                "AVG_VOL_STATUS",
                 "CREATED_AT"
             )
             VALUES (
                 :EXCHANGE,
                 :SYMBOL,
+                :VWAP_PERIOD,
                 :START_TIME,
                 :END_TIME,
                 :HIGHEST_VALUE,
                 :HIGHEST_TIMESTAMP,
                 :VWAP,
+                :AVG_VOLUME_5D,
                 :AVG_VOLUME_10D,
                 :AVG_VOLUME_20D,
-                :AVG_VOLUME_30D,
+                :AVG_VOLUME_YESTERDAY,
+                :AVG_VOLUME_LASTDAY,
+                :AVG_VOL_STATUS,
                 :CREATED_AT
             )
         ''')
-
         with self.engine.begin() as conn:
             conn.execute(q, rows)
-
         return len(rows)
     
 
@@ -2230,6 +2215,8 @@ class PostgresRepository:
             conn.execute(q)
 
 
+    from typing import Dict
+
     def build_master_combined_indicators(
         self,
         exchange: str,
@@ -2255,7 +2242,61 @@ class PostgresRepository:
         # 1) truncate master target
         self.truncate_table(target_schema, target_table)
 
-        created_day_expr = "TO_CHAR(CURRENT_TIMESTAMP, 'DD-MM-YYYY')"
+        # Insert edilecek kolonları tek yerde tanımla
+        insert_columns = [
+            "EXCHANGE",
+            "SYMBOL",
+
+            "FRVP_INTERVAL",
+            "FRVP_PERIOD_TYPE",
+            "FRVP_HIGHEST_DATE",
+            "FRVP_HIGHEST_VALUE",
+            "FRVP_ROW_COUNT_AFTER_HIGHEST",
+            "FRVP_DAY_COUNT_AFTER_HIGHEST",
+            "FRVP_LATEST_CLOSE_VALUE",
+            "FRVP_POC",
+            "FRVP_VAL",
+            "FRVP_VAH",
+
+            "BS_OPEN_PRICE",
+            "BS_CLOSE_PRICE",
+            "BS_DIFFER",
+            "BS_PERC",
+            "BS_BAR_STATUS",
+
+            "EMA_END_DATE",
+            "EMA5",
+            "EMA20",
+            "EMA_STATUS",
+            "EMA_CROSS",
+            "EMA_DAYS_SINCE_CROSS",
+
+            "RSI",
+            "RSI_MA",
+            "RSI_STATUS",
+            "RSI_CROSS",
+            "RSI_CROSS_DAYS_AGO",
+
+            "MFI",
+            "MFI_YESTERDAY",
+            "MFI_12DAY_AVG",
+            "MFI_DIRECTION",
+
+            "VWAP_HIGHEST_VALUE",
+            "VWAP_HIGHEST_TIMESTAMP",
+            "VWAP",
+            "VOL_AVG_5DAY",
+            "VOL_AVG_10DAY",
+            "VOL_AVG_20DAY",
+            "VOL_YESTERDAY",
+            "VOL_LASTDAY",
+            "VOL_STATUS",
+
+            "CREATED_AT",
+            "CREATED_DAY",
+        ]
+
+        insert_columns_sql = ",\n                ".join(f'"{col}"' for col in insert_columns)
 
         select_sql = f"""
             SELECT
@@ -2300,61 +2341,53 @@ class PostgresRepository:
                 vwap."HIGHEST_VALUE" AS "VWAP_HIGHEST_VALUE",
                 vwap."HIGHEST_TIMESTAMP" AS "VWAP_HIGHEST_TIMESTAMP",
                 vwap."VWAP" AS "VWAP",
+                vwap."AVG_VOLUME_5D" AS "VOL_AVG_5DAY",
                 vwap."AVG_VOLUME_10D" AS "VOL_AVG_10DAY",
                 vwap."AVG_VOLUME_20D" AS "VOL_AVG_20DAY",
-                vwap."AVG_VOLUME_30D" AS "VOL_AVG_30DAY",
+                vwap."AVG_VOLUME_YESTERDAY" AS "VOL_YESTERDAY",
+                vwap."AVG_VOLUME_LASTDAY" AS "VOL_LASTDAY",
+                vwap."AVG_VOL_STATUS" AS "VOL_STATUS",
 
                 CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS "CREATED_AT",
                 TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY') AS "CREATED_DAY"
 
             FROM silver."{frvp_table}" frvp
+
             LEFT JOIN silver."{bs_table}" bs
                 ON frvp."EXCHANGE" = bs."EXCHANGE"
-                AND frvp."SYMBOL" = bs."SYMBOL"
+            AND frvp."SYMBOL" = bs."SYMBOL"
+
             LEFT JOIN silver."{ema_table}" ema
                 ON frvp."EXCHANGE" = ema."EXCHANGE"
-                AND frvp."SYMBOL" = ema."SYMBOL"
+            AND frvp."SYMBOL" = ema."SYMBOL"
+
             LEFT JOIN silver."{rsi_table}" rsi
                 ON frvp."EXCHANGE" = rsi."EXCHANGE"
-                AND frvp."SYMBOL" = rsi."SYMBOL"
+            AND frvp."SYMBOL" = rsi."SYMBOL"
+
             LEFT JOIN silver."{mfi_table}" mfi
                 ON frvp."EXCHANGE" = mfi."EXCHANGE"
-                AND frvp."SYMBOL" = mfi."SYMBOL"
+            AND frvp."SYMBOL" = mfi."SYMBOL"
+
             LEFT JOIN silver."{vwap_table}" vwap
                 ON frvp."EXCHANGE" = vwap."EXCHANGE"
-                AND frvp."SYMBOL" = vwap."SYMBOL"
+            AND frvp."SYMBOL" = vwap."SYMBOL"
+            AND frvp."FRVP_PERIOD_TYPE" = vwap."VWAP_PERIOD"
+
             WHERE frvp."EXCHANGE" = :exchange
             AND frvp."IN_SCOPE_FOR_EMA_RSI" = TRUE
         """
 
         insert_master_sql = f"""
             INSERT INTO {target_schema}."{target_table}" (
-                "EXCHANGE","SYMBOL",
-                "FRVP_INTERVAL","FRVP_PERIOD_TYPE","FRVP_HIGHEST_DATE","FRVP_HIGHEST_VALUE",
-                "FRVP_ROW_COUNT_AFTER_HIGHEST","FRVP_DAY_COUNT_AFTER_HIGHEST","FRVP_LATEST_CLOSE_VALUE",
-                "FRVP_POC","FRVP_VAL","FRVP_VAH",
-                "BS_OPEN_PRICE","BS_CLOSE_PRICE","BS_DIFFER","BS_PERC","BS_BAR_STATUS",
-                "EMA_END_DATE","EMA5","EMA20","EMA_STATUS","EMA_CROSS","EMA_DAYS_SINCE_CROSS",
-                "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
-                "MFI","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
-                "VWAP_HIGHEST_VALUE","VWAP_HIGHEST_TIMESTAMP","VWAP","VOL_AVG_10DAY","VOL_AVG_20DAY","VOL_AVG_30DAY",
-                "CREATED_AT","CREATED_DAY"
+                    {insert_columns_sql}
             )
             {select_sql}
         """
 
         insert_log_sql = f"""
             INSERT INTO {log_schema}."{log_table}" (
-                "EXCHANGE","SYMBOL",
-                "FRVP_INTERVAL","FRVP_PERIOD_TYPE","FRVP_HIGHEST_DATE","FRVP_HIGHEST_VALUE",
-                "FRVP_ROW_COUNT_AFTER_HIGHEST","FRVP_DAY_COUNT_AFTER_HIGHEST","FRVP_LATEST_CLOSE_VALUE",
-                "FRVP_POC","FRVP_VAL","FRVP_VAH",
-                "BS_OPEN_PRICE","BS_CLOSE_PRICE","BS_DIFFER","BS_PERC","BS_BAR_STATUS",
-                "EMA_END_DATE","EMA5","EMA20","EMA_STATUS","EMA_CROSS","EMA_DAYS_SINCE_CROSS",
-                "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
-                "MFI","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
-                "VWAP_HIGHEST_VALUE","VWAP_HIGHEST_TIMESTAMP","VWAP","VOL_AVG_10DAY","VOL_AVG_20DAY","VOL_AVG_30DAY",
-                "CREATED_AT","CREATED_DAY"
+                    {insert_columns_sql}
             )
             {select_sql}
         """

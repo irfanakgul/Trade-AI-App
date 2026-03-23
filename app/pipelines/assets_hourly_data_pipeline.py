@@ -27,6 +27,9 @@ from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore
 from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
+from app.services.telegram_bot_chat_service import telegram_send_message
+
+
 @dataclass(frozen=True)
 class OandaHourlyDataPipelineFlags:
     # Step-1: ingestion
@@ -267,10 +270,10 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
                 timestamp_col="TIMESTAMP",
                 symbol_col="SYMBOL",
                 row_id_col="ROW_ID",
-                expected_close_hour=23,        # change if your market-close convention differs
+                expected_close_hour=20,        # change if your market-close convention differs
                 expected_close_minute=59,
                 end_tolerance_minutes=0,
-                bar_threshold=24,
+                bar_threshold=23,
                 checks=(
                     "END_DATE_CHECK",
                     "NULL_CHECK",
@@ -287,10 +290,10 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
                 timestamp_col="TIMESTAMP",
                 symbol_col="SYMBOL",
                 row_id_col="ROW_ID",
-                expected_close_hour=23,
+                expected_close_hour=20,
                 expected_close_minute=59,
                 end_tolerance_minutes=0,
-                bar_threshold=24,
+                bar_threshold=23,
                 checks=(
                     "END_DATE_CHECK",
                     "NULL_CHECK",
@@ -307,10 +310,10 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
                 timestamp_col="TIMESTAMP",
                 symbol_col="SYMBOL",
                 row_id_col="ROW_ID",
-                expected_close_hour=23,
+                expected_close_hour=20,
                 expected_close_minute=59,
                 end_tolerance_minutes=0,
-                bar_threshold=24,
+                bar_threshold=23,
                 checks=(
                     "END_DATE_CHECK",
                     "NULL_CHECK",
@@ -479,11 +482,12 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
         svc = IndVwapFocusService(repo=repo)
         svc.run(
             exchange=exchange,
-            source_schema=flags.converted_schema,
-            source_table=flags.converted_table,
+            source_schema=flags.target_schema,
+            source_table=flags.target_table,
             target_schema='silver',
             target_table='IND_VWAP_FOCUS',
-            lookback_month=4,
+            periods=["2year", "1year", "6months", "4months"],
+            is_truncate_scope=True,
         )
     else:
         print('❌ [IND-VWAP] assets skipped!')
@@ -550,6 +554,11 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             table='assets_master_combined_indicators',
             sheet_name= 'MASTER_IND_ASSETS',
             replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
+
+        telegram_send_message(
+            title=f"{exchange}",
+            text="asset calc done!"
+        )
         
         print(f"✅✅✅  [IND-MASTER] ASSETS DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:

@@ -5,6 +5,7 @@ from app.infrastructure.database.repository import PostgresRepository
 from sqlalchemy import text,bindparam
 from sqlalchemy.engine import Engine
 from datetime import datetime,timezone,timedelta
+from app.services.telegram_bot_chat_service import telegram_send_message
 
 load_dotenv()
 
@@ -68,4 +69,9 @@ def clone_symbol_list_for_focus(
 clone_symbol_list_for_focus(
     main_symbol_schema="prod",
     main_symbol_table="FOCUS_SYMBOLS_ALL",
+)
+
+telegram_send_message(
+    title="INITIAL",
+    text="Initial symbol list cloned successfuly"
 )
