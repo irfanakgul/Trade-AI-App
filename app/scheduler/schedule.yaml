@@ -3,52 +3,44 @@ run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
 poll_interval_seconds: 60
 
 jobs:
-
-    # daily calculations (raw+working+trim+focus)
-  - name: bist_daily_calc
-    run_days: [MON, TUE, WED, THU, FRI,SAT,SUN]
-    at: "23:15"
-    cmd: ".venv/bin/python -u main_bist_daily_data.py"
-    lock: "bist_daily_calc"
-
-  - name: bist_indicators
-    # run_days: [SUN] #remove if u will use depends on
-    # at: "23:27" #remove if u will use depends on
-    depends_on: "bist_daily_calc" #open for depends usage
-    cmd: ".venv/bin/python -u main_bist_indicators.py"
-    lock: "bist_indicators"
-
-  - name: bist_1min_batch #min data update
-    # run_days: [MON, TUE, WED, THU, FRI]
-    # at: "21:45"
-    depends_on: "bist_indicators" #open for depends usage
-    cmd: ".venv/bin/python -u main_bist_1min_data.py"
-    lock: "bist_1min_batch"
-
-  - name: usa_1min_batch
+  - name: initial_scope_clone
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "08:00"
-    cmd: ".venv/bin/python -u main_usa_1min_data.py"
-    lock: "usa_1min_batch"
+    at: "19:30"
+    cmd: ".venv/bin/python -u initial_clone_symbol_list_all.py"
+    lock: "initial_scope_clone_lock"
 
-  - name: usa_indicators 
-    depends_on: "usa_1min_batch"  #"bist_batch" #open for depends usage
-    # run_days: [SUN] #remove if u will use depends on
-    # at: "23:32" #remove if u will use depends on
-    cmd: ".venv/bin/python -u main_usa_indicators.py"
-    lock: "usa_indicators"
+  - name: bist_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT]
+    at: "19:33"
+    cmd: ".venv/bin/python -u main_bist_hourly_data.py"
+    lock: "bist_hourly_lock"
 
-  ### backup and restore for postgresql  ####
-  - name: backup_to_local_trigger
-    # depends_on: "usa_batch"  #"bist_batch" #open for depends usage
-    run_days: [MON, TUE, WED, THU, FRI, SAT] #remove if u will use depends on
-    at: "13:30" #remove if u will use depends on
-    cmd: ".venv/bin/python -u main_backup_trigger.py"
-    lock: "backup_to_local_trigger"
+  - name: ams_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT]
+    at: "21:00"
+    cmd: ".venv/bin/python -u main_ams_hourly_data.py"
+    lock: "ams_hourly_lock"
 
-  - name: restore_from_backup
-    depends_on: "backup_to_local_trigger"  #"backup_trigger" #open for depends usage
-    # run_days: [SUN] #remove if u will use depends on
-    # at: "23:32" #remove if u will use depends on
-    cmd: ".venv/bin/python -u main_local_restore_trigger.py"
-    lock: "restore_from_backup"
+  - name: nasdaq_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT]
+    at: "23:30"
+    cmd: ".venv/bin/python -u main_nasdaq_hourly_data.py"
+    lock: "nasdaq_hourly_lock"
+
+  - name: nyse_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT]
+    at: "23:59"
+    cmd: ".venv/bin/python -u main_nyse_hourly_data.py"
+    lock: "nyse_hourly_lock"
+
+  - name: crypto_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
+    at: "23:00"
+    cmd: ".venv/bin/python -u main_crypto_hourly_data.py"
+    lock: "crypto_hourly_lock"
+
+  - name: assets_hourly
+    run_days: [MON, TUE, WED, THU, FRI, SAT]
+    at: "22:30"
+    cmd: ".venv/bin/python -u main_assets_hourly_data.py"
+    lock: "assets_hourly_lock"

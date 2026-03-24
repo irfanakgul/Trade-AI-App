@@ -116,7 +116,7 @@ class DQV2Service:
                 cfg=cfg,
             )
 
-        if cfg.interval == "1min" and "BAR_CHECK" in cfg.checks:
+        if cfg.interval != "daily" and "BAR_CHECK" in cfg.checks:
             self._insert_bar_failures(
                 dq_run_id=dq_run_id,
                 run_cfg=run_cfg,
@@ -268,7 +268,7 @@ class DQV2Service:
             "dq_run_id": dq_run_id,
         }
 
-        if cfg.interval == "1min":
+        if (cfg.interval != "daily"):
             params["acceptable_min_ts"] = expected_end_time - timedelta(minutes=cfg.end_tolerance_minutes)
 
         with self.repo.engine.begin() as conn:

@@ -15,7 +15,7 @@ from app.core.indicators.ema.ema_math import calculate_ema_cross
 class EmaServiceConfig:
     job_name: str = "ind_ema_focus"
     calc_group: str = "EMA"
-    calc_name: str = "EMA5_EMA20_CROSS"
+    calc_name: str = "EMA_MULTI_CROSS"
     price_col: str = "CLOSE"
 
 
@@ -33,15 +33,15 @@ class IndEmaFocusService:
         ema_signal_lookback_days: int = 20,
         is_truncate_scope: bool = True,
     ) -> None:
-        """
-        Flow:
-        1) Read EMA scope symbols from silver.IND_FRV_POC_PROFILE where IN_SCOPE_FOR_EMA_RSI = True
-        2) Fetch last ema_calc_history_days daily rows for all those symbols
-        3) Apply legacy EMA math exactly
-        4) Restrict final outputs to latest row per symbol
-        5) Write to silver.IND_EMA_FOCUS after exchange-based delete
-        """
         exchange = exchange.upper().strip()
+
+        if isinstance(ema_calc_history_days, tuple):
+            ema_calc_history_days = int(ema_calc_history_days[0])
+        if isinstance(ema_signal_lookback_days, tuple):
+            ema_signal_lookback_days = int(ema_signal_lookback_days[0])
+
+        ema_calc_history_days = int(ema_calc_history_days)
+        ema_signal_lookback_days = int(ema_signal_lookback_days)
 
         symbols = self.repo.get_ema_focus_symbols(exchange=exchange)
         if not symbols:
@@ -52,7 +52,6 @@ class IndEmaFocusService:
             deleted = self.repo.delete_ind_ema_scope(exchange=exchange)
             print(f"[EMA] Cleared output scope: exchange={exchange} deleted_rows={deleted}")
 
-        # Fetch enough history so EMA20 matches legacy pandas better
         rows = self.repo.fetch_last_n_days_close_for_symbols(
             schema=input_schema,
             table=input_table,
@@ -113,13 +112,22 @@ class IndEmaFocusService:
             print(f"[EMA] No EMA result rows after calculation. exchange={exchange}")
             return
 
-        # Keep only latest row per symbol
+        # Latest row per symbol
         df_result = df_result.sort_values(["SYMBOL", "TIMESTAMP"]).reset_index(drop=True)
         latest_rows = (
             df_result.groupby("SYMBOL", as_index=False, group_keys=False)
             .tail(1)
             .reset_index(drop=True)
         )
+
+        # END_DATE = last timestamp in full fetched input dataset per symbol
+        end_dates = (
+            df.groupby("SYMBOL", as_index=False)["TIMESTAMP"]
+            .max()
+            .rename(columns={"TIMESTAMP": "END_DATE"})
+        )
+
+        latest_rows = latest_rows.merge(end_dates, on="SYMBOL", how="left")
 
         out_rows: List[Dict[str, Any]] = []
         created_at = datetime.now()
@@ -132,12 +140,27 @@ class IndEmaFocusService:
                 out_rows.append({
                     "EXCHANGE": exchange,
                     "SYMBOL": str(row["SYMBOL"]),
-                    "END_DATE": pd.to_datetime(row["TIMESTAMP"]).to_pydatetime(),
+                    "TIMESTAMP": pd.to_datetime(row["TIMESTAMP"]).to_pydatetime(),
+                    "END_DATE": pd.to_datetime(row["END_DATE"]).to_pydatetime(),
+
+                    "EMA3": float(row["EMA3"]) if pd.notna(row["EMA3"]) else None,
                     "EMA5": float(row["EMA5"]) if pd.notna(row["EMA5"]) else None,
+                    "EMA14": float(row["EMA14"]) if pd.notna(row["EMA14"]) else None,
                     "EMA20": float(row["EMA20"]) if pd.notna(row["EMA20"]) else None,
-                    "EMA_STATUS": int(row["EMA_Status"]) if pd.notna(row["EMA_Status"]) else None,
-                    "EMA_CROSS": int(row["EMA_Cross"]) if pd.notna(row["EMA_Cross"]) else None,
-                    "DAYS_SINCE_CROSS": int(row["DAYS_SINCE_CROSS"]) if pd.notna(row["DAYS_SINCE_CROSS"]) else None,
+
+                    "EMA_STATUS_5_20": int(row["EMA_Status_5_20"]) if pd.notna(row["EMA_Status_5_20"]) else None,
+                    "EMA_CROSS_5_20": int(row["EMA_Cross_5_20"]) if pd.notna(row["EMA_Cross_5_20"]) else None,
+
+                    "EMA_STATUS_3_20": int(row["EMA_Status_3_20"]) if pd.notna(row["EMA_Status_3_20"]) else None,
+                    "EMA_CROSS_3_20": int(row["EMA_Cross_3_20"]) if pd.notna(row["EMA_Cross_3_20"]) else None,
+
+                    "EMA_STATUS_3_14": int(row["EMA_Status_3_14"]) if pd.notna(row["EMA_Status_3_14"]) else None,
+                    "EMA_CROSS_3_14": int(row["EMA_Cross_3_14"]) if pd.notna(row["EMA_Cross_3_14"]) else None,
+
+                    "DAYS_SINCE_CROSS_5_20": int(row["DAYS_SINCE_CROSS_5_20"]) if pd.notna(row["DAYS_SINCE_CROSS_5_20"]) else None,
+                    "DAYS_SINCE_CROSS_3_20": int(row["DAYS_SINCE_CROSS_3_20"]) if pd.notna(row["DAYS_SINCE_CROSS_3_20"]) else None,
+                    "DAYS_SINCE_CROSS_3_14": int(row["DAYS_SINCE_CROSS_3_14"]) if pd.notna(row["DAYS_SINCE_CROSS_3_14"]) else None,
+
                     "CREATED_AT": created_at,
                 })
                 computed_symbols += 1

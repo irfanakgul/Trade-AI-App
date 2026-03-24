@@ -463,11 +463,11 @@ class PostgresRepository:
 ###############################################
 
 
-    def get_frvp_focus_symbols(self, exchange: str) -> List[str]:
+    def get_cloned_focus_symbols(self, exchange: str) -> List[str]:
         q = text("""
             SELECT "SYMBOL"
-            FROM silver."FRVP_FOCUS_SYMBOL_LIST"
-            WHERE "IN_SCOPE" = true
+            FROM silver."cloned_focus_symbol_list"
+            WHERE "OUT_OF_SCOPE" = False
               AND "EXCHANGE" = :exchange
             ORDER BY "SYMBOL";
         """)
@@ -477,13 +477,14 @@ class PostgresRepository:
 
     def get_symbol_max_ts(
         self,
+        schema:str,
         table: str,
         symbol: str,
         ts_col: str = "TS",
     ) -> Optional[datetime]:
         q = text(f"""
             SELECT MAX("{ts_col}") AS max_ts
-            FROM silver."{table}"
+            FROM {schema}."{table}"
             WHERE "SYMBOL" = :symbol;
         """)
         with self.engine.begin() as conn:
@@ -543,9 +544,13 @@ class PostgresRepository:
         exchange: str,
         interval: str,
         periods: List[str],
+        frvp_target_schema: str = '',
+        frvp_target_table: str = ''
+        
     ) -> int:
-        q = text("""
-            DELETE FROM silver."IND_FRV_POC_PROFILE"
+        
+        q = text(f"""
+            DELETE FROM {frvp_target_schema}."{frvp_target_table}"
             WHERE "EXCHANGE" = :exchange
               AND "INTERVAL" = :interval
               AND "FRVP_PERIOD_TYPE" = ANY(:periods);
@@ -554,15 +559,20 @@ class PostgresRepository:
             res = conn.execute(q, {"exchange": exchange, "interval": interval, "periods": periods})
             return int(res.rowcount or 0)
 
-    def insert_ind_frvp_rows(self, rows: List[Dict[str, Any]]) -> int:
+    def insert_ind_frvp_rows(
+        self,
+        rows: List[Dict[str, Any]],
+        schema: str = "",
+        table: str = "",
+    ) -> int:
         """
-        Inserts result rows. Assumes caller cleared scope or table has a suitable unique constraint.
+        Inserts result rows into target schema/table.
         """
         if not rows:
             return 0
 
-        q = text("""
-            INSERT INTO silver."IND_FRV_POC_PROFILE" (
+        q = text(f"""
+            INSERT INTO {schema}."{table}" (
                 "EXCHANGE","SYMBOL","INTERVAL","FRVP_PERIOD_TYPE",
                 "BASED_PERIOD",
                 "MIN_DATE","HIGHEST_DATE","HIGHEST_VALUE","MAX_DATE",
@@ -570,7 +580,8 @@ class PostgresRepository:
                 "CUTT_OFF_DATE",
                 "POC","VAL","VAH",
                 "RUNTIME",
-                "LATEST_CLOSE_VALUE"
+                "LATEST_CLOSE_VALUE",
+                "IN_SCOPE_FOR_EMA_RSI"
             )
             VALUES (
                 :EXCHANGE,:SYMBOL,:INTERVAL,:FRVP_PERIOD_TYPE,
@@ -580,24 +591,80 @@ class PostgresRepository:
                 :CUTT_OFF_DATE,
                 :POC,:VAL,:VAH,
                 :RUNTIME,
-                :LATEST_CLOSE_VALUE
+                :LATEST_CLOSE_VALUE,
+                FALSE
             );
         """)
 
-        # Ensure missing keys don't crash executemany and don't become "unbound"
+        # Ensure missing keys don't crash
         normalized_rows: List[Dict[str, Any]] = []
         for r in rows:
             rr = dict(r)
             rr.setdefault("BASED_PERIOD", None)
             rr.setdefault("LATEST_CLOSE_VALUE", None)
+            rr.setdefault("IN_SCOPE_FOR_EMA_RSI", False)
             normalized_rows.append(rr)
 
+        # 🔧 FIX: Loop yerine execute kullan
         with self.engine.begin() as conn:
-            # NOTE: Use a literal integer, don't bind params here.
             conn.execute(text("SET LOCAL statement_timeout = 300000"))
-            conn.execute(q, normalized_rows)
+            
+            # ✅ Her satır için execute çal (executemany yerine)
+            for row in normalized_rows:
+                conn.execute(q, row)
 
         return len(normalized_rows)
+    
+    def get_row_id_at_ts(
+        self,
+        schema: str,
+        table: str,
+        symbol: str,
+        ts_value: datetime,
+        ts_col: str = "TS",
+        row_id_col: str = "ROW_ID",
+    ) -> Optional[str]:
+        """
+        Gets ROW_ID at exact timestamp for a symbol.
+        
+        Parameters:
+        -----------
+        schema : str
+            Schema name
+        
+        table : str
+            Table name
+        
+        symbol : str
+            Symbol to query
+        
+        ts_value : datetime
+            Exact timestamp to find
+        
+        ts_col : str
+            Timestamp column name (default: 'TS')
+        
+        row_id_col : str
+            ROW_ID column name (default: 'ROW_ID')
+        
+        Returns:
+        --------
+        Optional[str] : ROW_ID value or None if not found
+        """
+        q = text(f"""
+            SELECT "{row_id_col}"::text AS row_id
+            FROM {schema}."{table}"
+            WHERE "SYMBOL" = :symbol
+            AND "{ts_col}" = :ts
+            ORDER BY "{ts_col}" ASC
+            LIMIT 1
+        """)
+    
+        with self.engine.connect() as conn:
+            row = conn.execute(q, {"symbol": symbol, "ts": ts_value}).fetchone()
+    
+        return str(row[0]) if row and row[0] is not None else None
+    
 
     def log_indicator_error(
         self,
@@ -638,10 +705,17 @@ class PostgresRepository:
                 "error_stack": error_stack,
             })
 
-    def get_symbol_max_ts(self, table: str, symbol: str, ts_col: str = "TS") -> Optional[datetime]:
+    def get_latest_close_value(
+        self,
+        schema: str,          
+        table: str,
+        symbol: str,
+        ts_col: str = "TS",
+        close_col: str = "CLOSE",
+    ) -> Optional[float]:
         q = text(f"""
             SELECT MAX("{ts_col}") AS max_ts
-            FROM silver."{table}"
+            FROM {schema}."{table}"
             WHERE "SYMBOL" = :symbol;
         """)
         with self.engine.begin() as conn:
@@ -650,6 +724,7 @@ class PostgresRepository:
 
     def get_peak_ts_in_window(
         self,
+        schema:str,
         table: str,
         symbol: str,
         start_ts: datetime,
@@ -663,7 +738,7 @@ class PostgresRepository:
         q = text(f"""
             WITH w AS (
                 SELECT "{ts_col}" AS ts, "{high_col}" AS high
-                FROM silver."{table}"
+                FROM {schema}."{table}"
                 WHERE "SYMBOL" = :symbol
                   AND "{ts_col}" >= :start_ts
                   AND "{ts_col}" <= :end_ts
@@ -682,6 +757,7 @@ class PostgresRepository:
 
     def get_row_id_at_ts(
         self,
+        schema:str,
         table: str,
         symbol: str,
         ts_value: datetime,
@@ -689,7 +765,7 @@ class PostgresRepository:
     ) -> Optional[str]:
         q = text(f"""
             SELECT "ROW_ID"
-            FROM silver."{table}"
+            FROM {schema}."{table}"
             WHERE "SYMBOL" = :symbol
               AND "{ts_col}" = :ts
             ORDER BY "{ts_col}" ASC
@@ -701,6 +777,7 @@ class PostgresRepository:
 
     def fetch_ohlcv_between_no_rowid(
         self,
+        schema:str,
         table: str,
         symbol: str,
         start_ts: datetime,
@@ -715,7 +792,7 @@ class PostgresRepository:
             SELECT
                 "{ts_col}" AS "TS",
                 "OPEN","HIGH","LOW","CLOSE","VOLUME"
-            FROM silver."{table}"
+            FROM {schema}."{table}"
             WHERE "SYMBOL" = :symbol
               AND "{ts_col}" >= :start_ts
               AND "{ts_col}" <= :end_ts
@@ -780,8 +857,8 @@ class PostgresRepository:
         """
         interval = interval.strip().lower()
 
-        if interval not in {"1min", "daily"}:
-            raise ValueError("interval must be either '1min' or 'daily'")
+        if interval not in {"1min", "daily",'hourly'}:
+            raise ValueError("interval must be either '1min', 'hourly' or 'daily'")
 
         cols = '"SYMBOL","TIMESTAMP","TS","OPEN","HIGH","LOW","CLOSE","VOLUME","SOURCE","ROW_ID"'
 
@@ -810,7 +887,7 @@ class PostgresRepository:
         """)
 
         with self.engine.begin() as conn:
-            if interval == "1min":
+            if (interval == "1min") or (interval == "hourly"):
                 max_ts = conn.execute(get_max_q).scalar()
 
                 if max_ts is None:
@@ -836,12 +913,12 @@ class PostgresRepository:
     
     def get_high_at_ts(
         self,
+        schema:str,
         table: str,
         symbol: str,
         ts_value: datetime,
         ts_col: str = "TS",
         high_col: str = "HIGH",
-        schema: str = "silver",
     ) -> Optional[float]:
         q = text(f"""
             SELECT "{high_col}"::double precision AS high
@@ -884,6 +961,8 @@ class PostgresRepository:
     def update_in_scope_for_ema_rsi(
         self,
         exchange: str,
+        frvp_target_schema:str,
+        frvp_target_table:str,
         interval: str,
     ) -> Tuple[int, int]:
         """
@@ -897,21 +976,21 @@ class PostgresRepository:
         exchange = exchange.upper().strip()
 
         # 1) Update flag for all rows in-scope
-        q_update = text("""
+        q_update = text(f"""
             WITH agg AS (
                 SELECT
                     "EXCHANGE",
                     "SYMBOL",
                     MIN("POC") AS min_poc,
                     MAX("LATEST_CLOSE_VALUE") AS latest_close
-                FROM silver."IND_FRV_POC_PROFILE"
+                FROM {frvp_target_schema}."{frvp_target_table}"
                 WHERE "EXCHANGE" = :exchange
                 AND "INTERVAL" = :interval
                 AND "POC" IS NOT NULL
                 AND "LATEST_CLOSE_VALUE" IS NOT NULL
                 GROUP BY "EXCHANGE", "SYMBOL"
             )
-            UPDATE silver."IND_FRV_POC_PROFILE" t
+            UPDATE {frvp_target_schema}."{frvp_target_table}" t
             SET "IN_SCOPE_FOR_EMA_RSI" = (a.latest_close > a.min_poc)
             FROM agg a
             WHERE t."EXCHANGE" = a."EXCHANGE"
@@ -920,14 +999,14 @@ class PostgresRepository:
         """)
 
         # 2) Counts (unique symbols + unique true symbols)
-        q_counts = text("""
+        q_counts = text(f"""
             WITH agg AS (
                 SELECT
                     "EXCHANGE",
                     "SYMBOL",
                     MIN("POC") AS min_poc,
                     MAX("LATEST_CLOSE_VALUE") AS latest_close
-                FROM silver."IND_FRV_POC_PROFILE"
+                FROM {frvp_target_schema}."{frvp_target_table}"
                 WHERE "EXCHANGE" = :exchange
                 AND "INTERVAL" = :interval
                 AND "POC" IS NOT NULL
@@ -1033,12 +1112,6 @@ class PostgresRepository:
                 ON {schema}."{table}" ("SYMBOL","TIMESTAMP");
             """))
 
-    def truncate_table(self, schema: str, table: str) -> None:
-        """
-        Truncates a table (fast delete).
-        """
-        with self.engine.begin() as conn:
-            conn.execute(text(f'TRUNCATE TABLE {schema}."{table}";'))
 
     def build_converted_daily_for_ema_rsi_scope(
         self,
@@ -1051,16 +1124,17 @@ class PostgresRepository:
         high_col: str,
         target_schema: str,
         target_table: str,
+
     ) -> dict:
         exchange = exchange.upper().strip()
         interval = interval.lower().strip()
 
         # 1) Scope symbols
-        q_syms = text("""
+        q_syms = text(f"""
             SELECT DISTINCT "SYMBOL"
-            FROM silver."IND_FRV_POC_PROFILE"
+            FROM silver."cloned_focus_symbol_list"
             WHERE "EXCHANGE" = :exchange
-            AND "IN_SCOPE_FOR_EMA_RSI" = true
+            AND "OUT_OF_SCOPE" = false
             ORDER BY "SYMBOL";
         """)
 
@@ -1171,8 +1245,8 @@ class PostgresRepository:
                 "n_days": int(start_trading_days_back),
             }
 
-        elif interval == "1min":
-            # Minute input: aggregate to daily, but filter by last N calendar days
+        elif (interval == "1min") or (interval == "hourly"):
+            # Minute/hourly input: aggregate to daily, but filter by last N calendar days
             q = text(f"""
                 WITH scope AS (
                     SELECT UNNEST(CAST(:symbols AS text[])) AS symbol
@@ -1300,7 +1374,7 @@ class PostgresRepository:
             }
 
         else:
-            raise ValueError(f"Unsupported interval: {interval} (use '1min' or 'daily')")
+            raise ValueError(f"Unsupported interval: {interval} (use '1min/hourly' or 'daily')")
 
         # Execute insert
         with self.engine.begin() as conn:
@@ -1394,21 +1468,53 @@ class PostgresRepository:
 
         q = text("""
             INSERT INTO silver."IND_EMA_FOCUS" (
-                "EXCHANGE","SYMBOL","END_DATE",
-                "EMA5","EMA20","EMA_STATUS","EMA_CROSS","DAYS_SINCE_CROSS",
+                "EXCHANGE","SYMBOL","TIMESTAMP","END_DATE",
+                "EMA3","EMA5","EMA14","EMA20",
+                "EMA_STATUS_5_20","EMA_CROSS_5_20",
+                "EMA_STATUS_3_20","EMA_CROSS_3_20",
+                "EMA_STATUS_3_14","EMA_CROSS_3_14",
+                "DAYS_SINCE_CROSS_5_20","DAYS_SINCE_CROSS_3_20","DAYS_SINCE_CROSS_3_14",
                 "CREATED_AT"
             )
             VALUES (
-                :EXCHANGE,:SYMBOL,:END_DATE,
-                :EMA5,:EMA20,:EMA_STATUS,:EMA_CROSS,:DAYS_SINCE_CROSS,
+                :EXCHANGE,:SYMBOL,:TIMESTAMP,:END_DATE,
+                :EMA3,:EMA5,:EMA14,:EMA20,
+                :EMA_STATUS_5_20,:EMA_CROSS_5_20,
+                :EMA_STATUS_3_20,:EMA_CROSS_3_20,
+                :EMA_STATUS_3_14,:EMA_CROSS_3_14,
+                :DAYS_SINCE_CROSS_5_20,:DAYS_SINCE_CROSS_3_20,:DAYS_SINCE_CROSS_3_14,
                 :CREATED_AT
             );
         """)
 
-        with self.engine.begin() as conn:
-            conn.execute(q, rows)
+        normalized_rows = []
+        for r in rows:
+            rr = dict(r)
 
-        return len(rows)
+            rr.setdefault("EMA3", None)
+            rr.setdefault("EMA5", None)
+            rr.setdefault("EMA14", None)
+            rr.setdefault("EMA20", None)
+
+            rr.setdefault("EMA_STATUS_5_20", None)
+            rr.setdefault("EMA_CROSS_5_20", None)
+
+            rr.setdefault("EMA_STATUS_3_20", None)
+            rr.setdefault("EMA_CROSS_3_20", None)
+
+            rr.setdefault("EMA_STATUS_3_14", None)
+            rr.setdefault("EMA_CROSS_3_14", None)
+
+            rr.setdefault("DAYS_SINCE_CROSS_5_20", None)
+            rr.setdefault("DAYS_SINCE_CROSS_3_20", None)
+            rr.setdefault("DAYS_SINCE_CROSS_3_14", None)
+
+            normalized_rows.append(rr)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, normalized_rows)
+
+        return len(normalized_rows)
     
     # delete last n days from table
     def delete_recent_days_by_last_ts(
@@ -1709,6 +1815,7 @@ class PostgresRepository:
         pandas.DataFrame
         """
 
+        now_str = datetime.now().strftime('%d-%m-%Y %H:%M')
 
         query = text(f"""
             SELECT *
@@ -1717,6 +1824,7 @@ class PostgresRepository:
 
         with self.engine.connect() as conn:
             df = pd.read_sql_query(query, conn)
+            df['RUNTIME'] = now_str
 
         if not sheet_name:
             raise ValueError("sheet_name must be provided when write_to_google=True")
@@ -1748,53 +1856,32 @@ class PostgresRepository:
             res = conn.execute(q, {"exchange": exchange})
         return int(res.rowcount or 0)
     
-    # vwap
-    def fetch_vwap_focus_source_data(
+    def fetch_vwap_source_data(
         self,
         source_schema: str,
         source_table: str,
         exchange: str,
-        lookback_month: int,
     ) -> List[Dict[str, Any]]:
         q = text(f'''
-            WITH symbol_last_ts AS (
-                SELECT
-                    "SYMBOL",
-                    MAX("TIMESTAMP") AS max_ts
-                FROM {source_schema}."{source_table}"
-                WHERE "EXCHANGE" = :exchange
-                GROUP BY "SYMBOL"
-            )
             SELECT
-                s."EXCHANGE",
-                s."SYMBOL",
-                s."TIMESTAMP",
-                s."HIGH",
-                s."VOLUME"
-            FROM {source_schema}."{source_table}" s
-            JOIN symbol_last_ts l
-            ON s."SYMBOL" = l."SYMBOL"
-            WHERE s."EXCHANGE" = :exchange
-            AND s."TIMESTAMP" >= (l.max_ts - make_interval(months => :lookback_month))
-            AND s."TIMESTAMP" <= l.max_ts
-            AND s."TIMESTAMP" IS NOT NULL
-            AND s."HIGH" IS NOT NULL
-            AND s."VOLUME" IS NOT NULL
-            AND s."VOLUME" >= 0
-            ORDER BY s."SYMBOL" ASC, s."TIMESTAMP" ASC
+                "EXCHANGE",
+                "SYMBOL",
+                "TIMESTAMP",
+                "HIGH",
+                "VOLUME"
+            FROM {source_schema}."{source_table}"
+            WHERE "EXCHANGE" = :exchange
+            AND "SYMBOL" IS NOT NULL
+            AND "TIMESTAMP" IS NOT NULL
+            AND "HIGH" IS NOT NULL
+            AND "VOLUME" IS NOT NULL
+            AND "VOLUME" >= 0
+            ORDER BY "SYMBOL" ASC, "TIMESTAMP" ASC
         ''')
         with self.engine.begin() as conn:
-            rows = conn.execute(
-                q,
-                {
-                    "exchange": exchange,
-                    "lookback_month": lookback_month,
-                }
-            ).fetchall()
-
+            rows = conn.execute(q, {"exchange": exchange}).fetchall()
         return [dict(r._mapping) for r in rows]
 
-    #insert vwap to sb
     def insert_ind_vwap_rows(
         self,
         target_schema: str,
@@ -1808,44 +1895,50 @@ class PostgresRepository:
             INSERT INTO {target_schema}."{target_table}" (
                 "EXCHANGE",
                 "SYMBOL",
+                "VWAP_PERIOD",
                 "START_TIME",
                 "END_TIME",
                 "HIGHEST_VALUE",
                 "HIGHEST_TIMESTAMP",
                 "VWAP",
+                "AVG_VOLUME_5D",
                 "AVG_VOLUME_10D",
                 "AVG_VOLUME_20D",
-                "AVG_VOLUME_30D",
+                "AVG_VOLUME_YESTERDAY",
+                "AVG_VOLUME_LASTDAY",
+                "AVG_VOL_STATUS",
                 "CREATED_AT"
             )
             VALUES (
                 :EXCHANGE,
                 :SYMBOL,
+                :VWAP_PERIOD,
                 :START_TIME,
                 :END_TIME,
                 :HIGHEST_VALUE,
                 :HIGHEST_TIMESTAMP,
                 :VWAP,
+                :AVG_VOLUME_5D,
                 :AVG_VOLUME_10D,
                 :AVG_VOLUME_20D,
-                :AVG_VOLUME_30D,
+                :AVG_VOLUME_YESTERDAY,
+                :AVG_VOLUME_LASTDAY,
+                :AVG_VOL_STATUS,
                 :CREATED_AT
             )
         ''')
-
         with self.engine.begin() as conn:
             conn.execute(q, rows)
-
         return len(rows)
     
 
     ### IND bar status identification
-    def get_bar_status_focus_symbols(self, exchange: str) -> list[str]:
-        q = text("""
+    def get_bar_status_focus_symbols(self, exchange: str,focus_symbol_schema: str,focus_symbol_table: str) -> list[str]:
+        q = text(f"""
             SELECT DISTINCT "SYMBOL"
-            FROM silver."IND_FRV_POC_PROFILE"
+            FROM {focus_symbol_schema}."{focus_symbol_table}"
             WHERE "EXCHANGE" = :exchange
-            AND "IN_SCOPE_FOR_EMA_RSI" = TRUE
+            AND "OUT_OF_SCOPE" = False
             ORDER BY "SYMBOL"
         """)
         with self.engine.begin() as conn:
@@ -1886,9 +1979,7 @@ class PostgresRepository:
                     "CLOSE"
                 FROM {source_schema}."{source_table}"
                 WHERE "SYMBOL" IN :symbols
-                AND "TIMESTAMP" IS NOT NULL
-                AND "OPEN" IS NOT NULL
-                AND "CLOSE" IS NOT NULL
+             
             ),
             last_day_per_symbol AS (
                 SELECT
@@ -2050,20 +2141,29 @@ class PostgresRepository:
         q = text("""
             INSERT INTO silver."IND_MFI_FOCUS" (
                 "EXCHANGE","SYMBOL","END_DATE",
-                "MFI","MF_TODAY","MF_YESTERDAY","MF_12DAY_AVG","MF_DIRECTION",
+                "MFI","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
                 "CREATED_AT"
             )
             VALUES (
                 :EXCHANGE,:SYMBOL,:END_DATE,
-                :MFI,:MF_TODAY,:MF_YESTERDAY,:MF_12DAY_AVG,:MF_DIRECTION,
+                :MFI,:MFI_YESTERDAY,:MFI_12DAY_AVG,:MFI_DIRECTION,
                 :CREATED_AT
             );
         """)
 
-        with self.engine.begin() as conn:
-            conn.execute(q, rows)
+        normalized_rows = []
+        for r in rows:
+            rr = dict(r)
+            rr.setdefault("MFI", None)
+            rr.setdefault("MFI_YESTERDAY", None)
+            rr.setdefault("MFI_12DAY_AVG", None)
+            rr.setdefault("MFI_DIRECTION", None)
+            normalized_rows.append(rr)
 
-        return len(rows)
+        with self.engine.begin() as conn:
+            conn.execute(q, normalized_rows)
+
+        return len(normalized_rows)
     
     def fetch_last_n_days_ohlcv_for_symbols(
         self,
@@ -2142,7 +2242,7 @@ class PostgresRepository:
     ###########################################
 
     def truncate_table(self, schema: str, table: str) -> None:
-        q = text(f'TRUNCATE TABLE {schema}."{table}";')
+        q = text(f'TRUNCATE TABLE "{schema}"."{table}";')  # ✅ HER İKİSİ TİRNAKLI
         with self.engine.begin() as conn:
             conn.execute(q)
 
@@ -2166,13 +2266,76 @@ class PostgresRepository:
         - Target table is truncated before insert.
         - Log table is append-only.
         """
-
+        print('in repo')
         exchange = exchange.upper().strip()
 
         # 1) truncate master target
         self.truncate_table(target_schema, target_table)
 
-        created_day_expr = "TO_CHAR(CURRENT_TIMESTAMP, 'DD-MM-YYYY')"
+        # Insert edilecek kolonları tek yerde tanımla
+        insert_columns = [
+            "EXCHANGE",
+            "SYMBOL",
+
+            "FRVP_INTERVAL",
+            "FRVP_PERIOD_TYPE",
+            "FRVP_HIGHEST_DATE",
+            "FRVP_HIGHEST_VALUE",
+            "FRVP_ROW_COUNT_AFTER_HIGHEST",
+            "FRVP_DAY_COUNT_AFTER_HIGHEST",
+            "FRVP_LATEST_CLOSE_VALUE",
+            "FRVP_POC",
+            "FRVP_VAL",
+            "FRVP_VAH",
+
+            "BS_OPEN_PRICE",
+            "BS_CLOSE_PRICE",
+            "BS_DIFFER",
+            "BS_PERC",
+            "BS_BAR_STATUS",
+
+            "EMA_TIMESTAMP",
+            "EMA_END_DATE",
+            "EMA3",
+            "EMA5",
+            "EMA14",
+            "EMA20",
+            "EMA_STATUS_5_20",
+            "EMA_CROSS_5_20",
+            "EMA_STATUS_3_20",
+            "EMA_CROSS_3_20",
+            "EMA_STATUS_3_14",
+            "EMA_CROSS_3_14",
+            "EMA_DAYS_SINCE_CROSS_5_20",
+            "EMA_DAYS_SINCE_CROSS_3_20",
+            "EMA_DAYS_SINCE_CROSS_3_14",
+
+            "RSI",
+            "RSI_MA",
+            "RSI_STATUS",
+            "RSI_CROSS",
+            "RSI_CROSS_DAYS_AGO",
+
+            "MFI",
+            "MFI_YESTERDAY",
+            "MFI_12DAY_AVG",
+            "MFI_DIRECTION",
+
+            "VWAP_HIGHEST_VALUE",
+            "VWAP_HIGHEST_TIMESTAMP",
+            "VWAP",
+            "VOL_AVG_5DAY",
+            "VOL_AVG_10DAY",
+            "VOL_AVG_20DAY",
+            "VOL_YESTERDAY",
+            "VOL_LASTDAY",
+            "VOL_STATUS",
+
+            "CREATED_AT",
+            "CREATED_DAY",
+        ]
+
+        insert_columns_sql = ",\n                ".join(f'"{col}"' for col in insert_columns)
 
         select_sql = f"""
             SELECT
@@ -2196,12 +2359,21 @@ class PostgresRepository:
                 bs."PERC" AS "BS_PERC",
                 bs."BAR_STATUS" AS "BS_BAR_STATUS",
 
+                ema."TIMESTAMP" AS "EMA_TIMESTAMP",
                 ema."END_DATE" AS "EMA_END_DATE",
+                ema."EMA3" AS "EMA3",
                 ema."EMA5" AS "EMA5",
+                ema."EMA14" AS "EMA14",
                 ema."EMA20" AS "EMA20",
-                ema."EMA_STATUS" AS "EMA_STATUS",
-                ema."EMA_CROSS" AS "EMA_CROSS",
-                ema."DAYS_SINCE_CROSS" AS "EMA_DAYS_SINCE_CROSS",
+                ema."EMA_STATUS_5_20" AS "EMA_STATUS_5_20",
+                ema."EMA_CROSS_5_20" AS "EMA_CROSS_5_20",
+                ema."EMA_STATUS_3_20" AS "EMA_STATUS_3_20",
+                ema."EMA_CROSS_3_20" AS "EMA_CROSS_3_20",
+                ema."EMA_STATUS_3_14" AS "EMA_STATUS_3_14",
+                ema."EMA_CROSS_3_14" AS "EMA_CROSS_3_14",
+                ema."DAYS_SINCE_CROSS_5_20" AS "EMA_DAYS_SINCE_CROSS_5_20",
+                ema."DAYS_SINCE_CROSS_3_20" AS "EMA_DAYS_SINCE_CROSS_3_20",
+                ema."DAYS_SINCE_CROSS_3_14" AS "EMA_DAYS_SINCE_CROSS_3_14",
 
                 rsi."RSI" AS "RSI",
                 rsi."RSI_MA" AS "RSI_MA",
@@ -2210,69 +2382,60 @@ class PostgresRepository:
                 rsi."RSI_CROSS_DAYS_AGO" AS "RSI_CROSS_DAYS_AGO",
 
                 mfi."MFI" AS "MFI",
-                mfi."MF_TODAY" AS "MFI_TODAY",
-                mfi."MF_YESTERDAY" AS "MFI_YESTERDAY",
-                mfi."MF_12DAY_AVG" AS "MFI_12DAY_AVG",
-                mfi."MF_DIRECTION" AS "MFI_DIRECTION",
+                mfi."MFI_YESTERDAY" AS "MFI_YESTERDAY",
+                mfi."MFI_12DAY_AVG" AS "MFI_12DAY_AVG",
+                mfi."MFI_DIRECTION" AS "MFI_DIRECTION",
 
                 vwap."HIGHEST_VALUE" AS "VWAP_HIGHEST_VALUE",
                 vwap."HIGHEST_TIMESTAMP" AS "VWAP_HIGHEST_TIMESTAMP",
                 vwap."VWAP" AS "VWAP",
+                vwap."AVG_VOLUME_5D" AS "VOL_AVG_5DAY",
                 vwap."AVG_VOLUME_10D" AS "VOL_AVG_10DAY",
                 vwap."AVG_VOLUME_20D" AS "VOL_AVG_20DAY",
-                vwap."AVG_VOLUME_30D" AS "VOL_AVG_30DAY",
+                vwap."AVG_VOLUME_YESTERDAY" AS "VOL_YESTERDAY",
+                vwap."AVG_VOLUME_LASTDAY" AS "VOL_LASTDAY",
+                vwap."AVG_VOL_STATUS" AS "VOL_STATUS",
 
                 CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS "CREATED_AT",
                 TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY') AS "CREATED_DAY"
 
             FROM silver."{frvp_table}" frvp
+
             LEFT JOIN silver."{bs_table}" bs
                 ON frvp."EXCHANGE" = bs."EXCHANGE"
-                AND frvp."SYMBOL" = bs."SYMBOL"
+            AND frvp."SYMBOL" = bs."SYMBOL"
+
             LEFT JOIN silver."{ema_table}" ema
                 ON frvp."EXCHANGE" = ema."EXCHANGE"
-                AND frvp."SYMBOL" = ema."SYMBOL"
+            AND frvp."SYMBOL" = ema."SYMBOL"
+
             LEFT JOIN silver."{rsi_table}" rsi
                 ON frvp."EXCHANGE" = rsi."EXCHANGE"
-                AND frvp."SYMBOL" = rsi."SYMBOL"
+            AND frvp."SYMBOL" = rsi."SYMBOL"
+
             LEFT JOIN silver."{mfi_table}" mfi
                 ON frvp."EXCHANGE" = mfi."EXCHANGE"
-                AND frvp."SYMBOL" = mfi."SYMBOL"
+            AND frvp."SYMBOL" = mfi."SYMBOL"
+
             LEFT JOIN silver."{vwap_table}" vwap
                 ON frvp."EXCHANGE" = vwap."EXCHANGE"
-                AND frvp."SYMBOL" = vwap."SYMBOL"
+            AND frvp."SYMBOL" = vwap."SYMBOL"
+            AND frvp."FRVP_PERIOD_TYPE" = vwap."VWAP_PERIOD"
+
             WHERE frvp."EXCHANGE" = :exchange
             AND frvp."IN_SCOPE_FOR_EMA_RSI" = TRUE
         """
 
         insert_master_sql = f"""
             INSERT INTO {target_schema}."{target_table}" (
-                "EXCHANGE","SYMBOL",
-                "FRVP_INTERVAL","FRVP_PERIOD_TYPE","FRVP_HIGHEST_DATE","FRVP_HIGHEST_VALUE",
-                "FRVP_ROW_COUNT_AFTER_HIGHEST","FRVP_DAY_COUNT_AFTER_HIGHEST","FRVP_LATEST_CLOSE_VALUE",
-                "FRVP_POC","FRVP_VAL","FRVP_VAH",
-                "BS_OPEN_PRICE","BS_CLOSE_PRICE","BS_DIFFER","BS_PERC","BS_BAR_STATUS",
-                "EMA_END_DATE","EMA5","EMA20","EMA_STATUS","EMA_CROSS","EMA_DAYS_SINCE_CROSS",
-                "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
-                "MFI","MFI_TODAY","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
-                "VWAP_HIGHEST_VALUE","VWAP_HIGHEST_TIMESTAMP","VWAP","VOL_AVG_10DAY","VOL_AVG_20DAY","VOL_AVG_30DAY",
-                "CREATED_AT","CREATED_DAY"
+                    {insert_columns_sql}
             )
             {select_sql}
         """
 
         insert_log_sql = f"""
             INSERT INTO {log_schema}."{log_table}" (
-                "EXCHANGE","SYMBOL",
-                "FRVP_INTERVAL","FRVP_PERIOD_TYPE","FRVP_HIGHEST_DATE","FRVP_HIGHEST_VALUE",
-                "FRVP_ROW_COUNT_AFTER_HIGHEST","FRVP_DAY_COUNT_AFTER_HIGHEST","FRVP_LATEST_CLOSE_VALUE",
-                "FRVP_POC","FRVP_VAL","FRVP_VAH",
-                "BS_OPEN_PRICE","BS_CLOSE_PRICE","BS_DIFFER","BS_PERC","BS_BAR_STATUS",
-                "EMA_END_DATE","EMA5","EMA20","EMA_STATUS","EMA_CROSS","EMA_DAYS_SINCE_CROSS",
-                "RSI","RSI_MA","RSI_STATUS","RSI_CROSS","RSI_CROSS_DAYS_AGO",
-                "MFI","MFI_TODAY","MFI_YESTERDAY","MFI_12DAY_AVG","MFI_DIRECTION",
-                "VWAP_HIGHEST_VALUE","VWAP_HIGHEST_TIMESTAMP","VWAP","VOL_AVG_10DAY","VOL_AVG_20DAY","VOL_AVG_30DAY",
-                "CREATED_AT","CREATED_DAY"
+                    {insert_columns_sql}
             )
             {select_sql}
         """
@@ -2297,10 +2460,6 @@ class PostgresRepository:
         with self.engine.begin() as conn:
             return int(conn.execute(q).scalar_one())
 
-    def truncate_table(self, schema: str, table: str) -> None:
-        q = text(f'TRUNCATE TABLE {schema}."{table}";')
-        with self.engine.begin() as conn:
-            conn.execute(q)
 
     def archive_dq_rows(self, active_table: str) -> int:
         """
@@ -2322,3 +2481,397 @@ class PostgresRepository:
         ''')
         with self.engine.begin() as conn:
             return int(conn.execute(q).scalar_one() or 0)
+        
+    def get_dq_failed_symbols(self, exchange:str, table:str):
+        q = text(f'''
+            SELECT "SYMBOL"
+            FROM logs."{table}"
+            WHERE "EXCHANGE" = {exchange};
+        ''')
+        with self.engine.begin() as conn:
+            return int(conn.execute(q).scalar_one() or 0)
+        
+    ########################################
+    # NEW SYSTEM 6 EXCHANGE
+    ########################################
+
+
+    def get_in_scope_symbols_from_table(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+        symbol_col: str = "SYMBOL",
+        exchange_col: str = "EXCHANGE",
+        in_scope_col: str = "IN_SCOPE",
+    ) -> list[str]:
+        """
+        Reads symbol list from a generic scope table.
+        """
+
+        q = text(f'''
+            SELECT "{symbol_col}"
+            FROM "{schema}"."{table}"
+            WHERE "{exchange_col}" = :exchange
+            AND "{in_scope_col}" = TRUE
+            ORDER BY "{symbol_col}";
+        ''')
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange}).fetchall()
+
+        return [r[0] for r in rows]
+    
+    def update_focus_symbol_scope(
+        self,
+        exchange: str,
+        compare_schema: str,
+        compare_table: str,
+        reason: str,
+        main_symbol_schema: str,
+        main_symbol_table: str,
+        drop_and_recreate: bool = False,
+    ) -> dict:
+        """
+        Manages OUT_OF_SCOPE and OOS_REASON flags on the cloned symbol list table.
+
+        drop_and_recreate=True  → Drops entire table and recreates it from scratch 
+                                (use only on first run of the day to reset)
+        
+        drop_and_recreate=False → NEVER drops table. Only updates OUT_OF_SCOPE and OOS_REASON columns
+                                (safe to run multiple times per day)
+
+        Elimination logic:
+        - Symbols missing from compare table are marked OUT_OF_SCOPE = True with the given reason
+        - Symbols already marked True are never overwritten (first elimination reason wins)
+        - Symbol list never shrinks — only flags are updated
+        """
+
+        src_fqn = f'{main_symbol_schema}."{main_symbol_table}"'
+        tgt_fqn = 'silver."cloned_focus_symbol_list"'
+        cmp_fqn = f'{compare_schema}."{compare_table}"'
+
+        with self.engine.begin() as conn:
+            
+            # ═══════════════════════════════════════════════════════════════════════════════
+            # STEP 1: Table initialization (DROP and recreate OR create if missing)
+            # ═══════════════════════════════════════════════════════════════════════════════
+            
+            if drop_and_recreate:
+                # 🔴 DROP PATH: Completely remove and recreate table
+                # Use case: First run of the day → reset all flags to FALSE
+                
+                q_drop = text(f'DROP TABLE IF EXISTS {tgt_fqn}')
+                conn.execute(q_drop)
+                
+                q_create_fresh = text(f"""
+                    CREATE TABLE {tgt_fqn} AS
+                    SELECT
+                        s.*,
+                        FALSE::boolean AS "OUT_OF_SCOPE",
+                        NULL::text     AS "OOS_REASON"
+                    FROM {src_fqn} s
+                """)
+                conn.execute(q_create_fresh)
+                
+            else:
+                # 🟢 SAFE PATH: Only create if table doesn't exist
+                # Never drops or modifies existing table
+                # Use case: Intraday runs → only update flags, never touch structure
+                
+                q_create_if_not_exists = text(f"""
+                    CREATE TABLE IF NOT EXISTS {tgt_fqn} AS
+                    SELECT
+                        s.*,
+                        FALSE::boolean AS "OUT_OF_SCOPE",
+                        NULL::text     AS "OOS_REASON"
+                    FROM {src_fqn} s
+                """)
+                conn.execute(q_create_if_not_exists)
+
+            # ═══════════════════════════════════════════════════════════════════════════════
+            # STEP 2: Update flag columns only (never touches table structure or other rows)
+            # ═══════════════════════════════════════════════════════════════════════════════
+            
+            q_update = text(f"""
+                UPDATE {tgt_fqn} t
+                SET
+                    "OUT_OF_SCOPE" = TRUE,
+                    "OOS_REASON"   = :reason
+                WHERE t."EXCHANGE" = :exchange
+                AND t."OUT_OF_SCOPE" = FALSE
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM {cmp_fqn} c
+                    WHERE c."SYMBOL" = t."SYMBOL"
+                )
+            """)
+            conn.execute(q_update, {"exchange": exchange, "reason": reason})
+
+            # ═══════════════════════════════════════════════════════════════════════════════
+            # STEP 3: Count results and gather statistics
+            # ═══════════════════════════════════════════════════════════════════════════════
+            
+            q_counts = text(f"""
+                SELECT
+                    COUNT(*)                                                                    AS total,
+                    COUNT(*) FILTER (WHERE "OUT_OF_SCOPE" = TRUE)                              AS eliminated,
+                    COUNT(*) FILTER (WHERE "OUT_OF_SCOPE" = FALSE)                             AS remaining,
+                    ARRAY_AGG("SYMBOL") FILTER (WHERE "OUT_OF_SCOPE" = TRUE AND "EXCHANGE" = :exchange) 
+                        AS eliminated_symbols
+                FROM {tgt_fqn}
+                WHERE "EXCHANGE" = :exchange
+            """)
+            counts = conn.execute(q_counts, {"exchange": exchange}).mappings().one()
+
+        # ═══════════════════════════════════════════════════════════════════════════════
+        # Extract counts
+        # ═══════════════════════════════════════════════════════════════════════════════
+        
+        total = int(counts["total"])
+        eliminated = int(counts["eliminated"])
+        remaining = int(counts["remaining"])
+        eliminated_syms = counts["eliminated_symbols"] or []
+
+        # ═══════════════════════════════════════════════════════════════════════════════
+        # Log results
+        # ═══════════════════════════════════════════════════════════════════════════════
+        
+        mode = "DROP & RECREATE" if drop_and_recreate else "UPDATE ONLY"
+        
+        print(
+            f"[{exchange}] Symbol scope update | "
+            f"Mode: {mode} | "
+            f"Total: {total} | "
+            f"Eliminated: {eliminated} | "
+            f"Remaining: {remaining} | "
+            f"Reason: '{reason}'"
+        )
+
+        return {
+            "exchange": exchange,
+            "source": f"{main_symbol_schema}.{main_symbol_table}",
+            "target": "silver.cloned_focus_symbol_list",
+            "compare": f"{compare_schema}.{compare_table}",
+            "drop_and_recreate": drop_and_recreate,
+            "mode": mode,
+            "total": total,
+            "eliminated": eliminated,
+            "remaining": remaining,
+            "eliminated_symbols": eliminated_syms,
+            "reason": reason,
+        }
+    
+    def update_focus_symbol_scope_filtered(
+        self,
+        exchange: str,
+        compare_schema: str,
+        compare_table: str,
+        comp_col: str,
+        comp_value: str,
+        reason: str,
+        main_symbol_schema: str,
+        main_symbol_table: str,
+        drop_and_recreate: bool = False,
+    ) -> dict:
+        """
+        Manages OUT_OF_SCOPE and OOS_REASON flags on the cloned symbol list table
+        with an ADDITIONAL FILTER on the comparison table.
+
+        Parameters:
+        -----------
+        exchange : str
+            Exchange code (e.g., 'BINANCE', 'EURONEXT')
+        
+        compare_schema : str
+            Schema of comparison table (e.g., 'raw', 'silver')
+        
+        compare_table : str
+            Table name to compare against
+        
+        comp_col : str
+            Column name in comparison table to filter on (e.g., 'BAR_STATUS', 'DATA_QUALITY')
+        
+        comp_value : str
+            Value to EXCLUDE/MARK AS BAD (e.g., 'RED' - symboller RED ise OUT_OF_SCOPE=TRUE)
+        
+        reason : str
+            Elimination reason to store/append to OOS_REASON column
+        
+        main_symbol_schema : str
+            Schema of main symbol list source
+        
+        main_symbol_table : str
+            Table name of main symbol list source
+        
+        drop_and_recreate : bool
+            If True: Drop entire table and recreate from scratch (first run of day)
+            If False: Only update flags, never touch table structure (intraday runs)
+
+        Logic:
+        ------
+        🔴 MARK BAD VALUES:
+        1. Looks for symbols in compare_table WHERE comp_col = comp_value
+        2. Symbols FOUND with this value are marked OUT_OF_SCOPE = True
+        3. OOS_REASON is SET or APPENDED (if already has reason, append with ||)
+        4. IN_SCOPE_FOR_EMA_RSI is NEVER touched - completely independent
+        5. Already eliminated symbols can get multiple reasons appended
+        6. Symbol list never shrinks — only flags are updated
+        
+        Example:
+        --------
+        # RED bar status olan symboller elenir (OUT_OF_SCOPE=TRUE)
+        update_focus_symbol_scope_filtered(
+            exchange='BINANCE',
+            compare_schema='silver',
+            compare_table='IND_BAR_STATUS',
+            comp_col='BAR_STATUS',
+            comp_value='RED',
+            reason='bar status is red',
+            main_symbol_schema='gold',
+            main_symbol_table='symbol_master',
+            drop_and_recreate=False
+        )
+        
+        Çalıştıktan sonra:
+        - RED olan symboller OUT_OF_SCOPE=TRUE, OOS_REASON="bar status is red"
+        
+        Eğer aynı sembol başka nedenle elenmek istenirse:
+        - OOS_REASON="bar status is red || failed data quality check"
+        """
+
+        src_fqn = f'{main_symbol_schema}."{main_symbol_table}"'
+        tgt_fqn = 'silver."cloned_focus_symbol_list"'
+        cmp_fqn = f'{compare_schema}."{compare_table}"'
+
+        with self.engine.begin() as conn:
+            
+            # ═══════════════════════════════════════════════════════════════════════════════
+            # STEP 1: Table initialization (DROP and recreate OR create if missing)
+            # ═══════════════════════════════════════════════════════════════════════════════
+            
+            if drop_and_recreate:
+                # 🔴 DROP PATH: Completely remove and recreate table
+                # Use case: First run of the day → reset all flags to FALSE
+                
+                q_drop = text(f'DROP TABLE IF EXISTS {tgt_fqn}')
+                conn.execute(q_drop)
+                
+                q_create_fresh = text(f"""
+                    CREATE TABLE {tgt_fqn} AS
+                    SELECT
+                        s.*,
+                        FALSE::boolean AS "OUT_OF_SCOPE",
+                        NULL::text     AS "OOS_REASON"
+                    FROM {src_fqn} s
+                """)
+                conn.execute(q_create_fresh)
+                
+            else:
+                # 🟢 SAFE PATH: Only create if table doesn't exist
+                # Never drops or modifies existing table
+                # Use case: Intraday runs → only update flags, never touch structure
+                
+                q_create_if_not_exists = text(f"""
+                    CREATE TABLE IF NOT EXISTS {tgt_fqn} AS
+                    SELECT
+                        s.*,
+                        FALSE::boolean AS "OUT_OF_SCOPE",
+                        NULL::text     AS "OOS_REASON"
+                    FROM {src_fqn} s
+                """)
+                conn.execute(q_create_if_not_exists)
+
+            # ═══════════════════════════════════════════════════════════════════════════════
+            # STEP 2: Update OUT_OF_SCOPE flag - Mark symbols with bad value
+            # 
+            # 🔧 LOGIC:
+            # If symbol EXISTS in compare_table WITH comp_value → Mark OUT_OF_SCOPE=TRUE
+            # OOS_REASON: If NULL/empty → SET reason, ELSE APPEND with ||
+            # IN_SCOPE_FOR_EMA_RSI: NEVER TOUCHED (completely independent)
+            # ═══════════════════════════════════════════════════════════════════════════════
+            
+            q_update = text(f"""
+                UPDATE {tgt_fqn} t
+                SET
+                    "OUT_OF_SCOPE" = TRUE,
+                    "OOS_REASON" = CASE 
+                        WHEN t."OOS_REASON" IS NULL OR t."OOS_REASON" = ''
+                        THEN :reason
+                        ELSE t."OOS_REASON" || ' || ' || :reason
+                    END
+                WHERE t."EXCHANGE" = :exchange
+                AND t."OUT_OF_SCOPE" = FALSE
+                AND EXISTS (
+                    SELECT 1
+                    FROM {cmp_fqn} c
+                    WHERE c."SYMBOL" = t."SYMBOL"
+                    AND c."{comp_col}" != :comp_value
+                )
+            """)
+            conn.execute(q_update, {
+                "exchange": exchange, 
+                "reason": reason,
+                "comp_value": comp_value
+            })
+
+            # ═══════════════════════════════════════════════════════════════════════════════
+            # STEP 3: Count results and gather statistics
+            # ═══════════════════════════════════════════════════════════════════════════════
+            
+            q_counts = text(f"""
+                SELECT
+                    COUNT(*)                                                                    AS total,
+                    COUNT(*) FILTER (WHERE "OUT_OF_SCOPE" = TRUE)                              AS eliminated,
+                    COUNT(*) FILTER (WHERE "OUT_OF_SCOPE" = FALSE)                             AS remaining,
+                    ARRAY_AGG("SYMBOL") FILTER (WHERE "OUT_OF_SCOPE" = TRUE AND "EXCHANGE" = :exchange) 
+                        AS eliminated_symbols
+                FROM {tgt_fqn}
+                WHERE "EXCHANGE" = :exchange
+            """)
+            counts = conn.execute(q_counts, {"exchange": exchange}).mappings().one()
+
+        # ═══════════════════════════════════════════════════════════════════════════════
+        # Extract counts
+        # ═══════════════════════════════════════════════════════════════════════════════
+        
+        total = int(counts["total"])
+        eliminated = int(counts["eliminated"])
+        remaining = int(counts["remaining"])
+        eliminated_syms = counts["eliminated_symbols"] or []
+
+        # ═══════════════════════════════════════════════════════════════════════════════
+        # Log results
+        # ═══════════════════════════════════════════════════════════════════════════════
+        
+        mode = "DROP & RECREATE" if drop_and_recreate else "UPDATE ONLY"
+        
+        print(
+            f"[{exchange}] Symbol scope update (FILTERED) | "
+            f"Mode: {mode} | "
+            f"Filter: {comp_col}='{comp_value}' | "
+            f"Total: {total} | "
+            f"Eliminated: {eliminated} | "
+            f"Remaining: {remaining} | "
+            f"Reason: '{reason}'"
+        )
+
+        return {
+            "exchange": exchange,
+            "source": f"{main_symbol_schema}.{main_symbol_table}",
+            "target": "silver.cloned_focus_symbol_list",
+            "compare": f"{compare_schema}.{compare_table}",
+            "compare_filter": {
+                "column": comp_col,
+                "value": comp_value,
+                "meaning": "MARKS SYMBOLS WITH THIS VALUE AS OUT_OF_SCOPE (BAD)"
+            },
+            "drop_and_recreate": drop_and_recreate,
+            "mode": mode,
+            "total": total,
+            "eliminated": eliminated,
+            "remaining": remaining,
+            "eliminated_symbols": eliminated_syms,
+            "reason": reason,
+            "note": "OOS_REASON values are APPENDED with ' || ' separator for multiple elimination reasons",
+        }

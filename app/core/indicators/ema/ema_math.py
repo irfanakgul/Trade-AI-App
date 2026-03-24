@@ -11,17 +11,24 @@ def calculate_ema_cross(
     signal_lookback_days: int = 20,
 ) -> pd.DataFrame:
     """
-    Legacy pandas EMA logic preserved exactly.
+    Legacy EMA logic preserved exactly.
 
     Expected input columns:
     - SYMBOL
     - TIMESTAMP
     - CLOSE (or price_col)
 
-    Notes:
-    - EMA values are calculated on the FULL input dataframe passed in.
-    - Therefore caller should provide enough history (warmup) so EMA20 matches legacy project.
-    - Final output is filtered by DAYS_SINCE_CROSS between 0 and signal_lookback_days.
+    Output columns:
+    - EMA3, EMA5, EMA14, EMA20
+    - EMA_Status_5_20, EMA_Cross_5_20
+    - EMA_Status_3_20, EMA_Cross_3_20
+    - EMA_Status_3_14, EMA_Cross_3_14
+    - DAYS_SINCE_CROSS_5_20
+    - DAYS_SINCE_CROSS_3_20
+    - DAYS_SINCE_CROSS_3_14
+
+    Final filter:
+    - keep rows where all three DAYS_SINCE_CROSS_* values are <= signal_lookback_days
     """
 
     required_cols = {"SYMBOL", "TIMESTAMP", price_col}
@@ -46,33 +53,61 @@ def calculate_ema_cross(
         g = group.sort_values("TIMESTAMP").reset_index(drop=True).copy()
         g["SYMBOL"] = symbol
 
-        # SAME legacy math
+        # EMA calculations
+        g["EMA3"] = g[price_col].ewm(span=3, adjust=False).mean()
         g["EMA5"] = g[price_col].ewm(span=5, adjust=False).mean()
+        g["EMA14"] = g[price_col].ewm(span=14, adjust=False).mean()
         g["EMA20"] = g[price_col].ewm(span=20, adjust=False).mean()
-        g["EMA_Status"] = (g["EMA5"] > g["EMA20"]).astype(int)
-        g["EMA_Cross"] = g["EMA_Status"].diff().fillna(0).astype(int)
 
-        last_cross_pos: Optional[int] = None
-        days_since = []
+        # 5 / 20
+        g["EMA_Status_5_20"] = (g["EMA5"] > g["EMA20"]).astype(int)
+        g["EMA_Cross_5_20"] = g["EMA_Status_5_20"].diff().fillna(0).astype(int)
 
-        for pos, row in g.iterrows():
-            if row["EMA_Cross"] == 1:
-                last_cross_pos = pos
+        # 3 / 20
+        g["EMA_Status_3_20"] = (g["EMA3"] > g["EMA20"]).astype(int)
+        g["EMA_Cross_3_20"] = g["EMA_Status_3_20"].diff().fillna(0).astype(int)
 
-            if row["EMA_Status"] == 0 or last_cross_pos is None:
-                days_since.append(0)
-            else:
-                days_since.append(pos - last_cross_pos)
+        # 3 / 14
+        g["EMA_Status_3_14"] = (g["EMA3"] > g["EMA14"]).astype(int)
+        g["EMA_Cross_3_14"] = g["EMA_Status_3_14"].diff().fillna(0).astype(int)
 
-        g["DAYS_SINCE_CROSS"] = days_since
+        # DAYS_SINCE_CROSS per pair
+        for suffix, status_col, cross_col in [
+            ("5_20", "EMA_Status_5_20", "EMA_Cross_5_20"),
+            ("3_20", "EMA_Status_3_20", "EMA_Cross_3_20"),
+            ("3_14", "EMA_Status_3_14", "EMA_Cross_3_14"),
+        ]:
+            last_cross_pos: Optional[int] = None
+            days_since = []
+
+            for pos, row in g.iterrows():
+                if row[cross_col] == 1:
+                    last_cross_pos = pos
+
+                if row[status_col] == 0 or last_cross_pos is None:
+                    days_since.append(0)
+                else:
+                    days_since.append(pos - last_cross_pos)
+
+            g[f"DAYS_SINCE_CROSS_{suffix}"] = days_since
+
         result_frames.append(g)
 
     if not result_frames:
         return pd.DataFrame(columns=list(work.columns) + [
-            "EMA5", "EMA20", "EMA_Status", "EMA_Cross", "DAYS_SINCE_CROSS"
+            "EMA3", "EMA5", "EMA14", "EMA20",
+            "EMA_Status_5_20", "EMA_Cross_5_20",
+            "EMA_Status_3_20", "EMA_Cross_3_20",
+            "EMA_Status_3_14", "EMA_Cross_3_14",
+            "DAYS_SINCE_CROSS_5_20", "DAYS_SINCE_CROSS_3_20", "DAYS_SINCE_CROSS_3_14",
         ])
 
     result = pd.concat(result_frames, ignore_index=True)
 
-    # SAME final filter logic
-    return result[result["DAYS_SINCE_CROSS"].between(0, signal_lookback_days)].reset_index(drop=True)
+    mask = (
+        (result["DAYS_SINCE_CROSS_5_20"] <= signal_lookback_days) &
+        (result["DAYS_SINCE_CROSS_3_20"] <= signal_lookback_days) &
+        (result["DAYS_SINCE_CROSS_3_14"] <= signal_lookback_days)
+    )
+
+    return result[mask].reset_index(drop=True)

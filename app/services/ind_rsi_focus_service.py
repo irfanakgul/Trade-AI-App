@@ -46,7 +46,7 @@ class IndRsiFocusService:
         rsi_calc_history_days = int(rsi_calc_history_days)
         rsi_signal_lookback_days = int(rsi_signal_lookback_days)
 
-        symbols = self.repo.get_ema_focus_symbols(exchange=exchange)
+        symbols = self.repo.get_cloned_focus_symbols(exchange=exchange)
         if not symbols:
             print(f"[RSI] No in-scope symbols found. exchange={exchange}")
             return

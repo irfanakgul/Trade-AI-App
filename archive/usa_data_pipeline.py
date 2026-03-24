@@ -1,7 +1,6 @@
 import os
 from dataclasses import dataclass
 from typing import Optional
-from datetime import date
 from app.services.dq_v2_service import DQV2Service, DQRunConfig, DQTableConfig
 from app.infrastructure.api_clients.polygon_provider import PolygonProvider
 from app.services.usa_historical_ingestion_service import UsaHistoricalIngestionService
@@ -10,7 +9,7 @@ from app.services.usa_historical_fallback_service import UsaHistoricalFallbackSe
 from app.infrastructure.api_clients.yahooquery_usa_provider import YahooQueryUsaProvider
 from app.services.usa_historical_yahoo_fallback_service import UsaHistoricalYahooFallbackService
 from app.infrastructure.database.repository import PostgresRepository
-from datetime import datetime
+from datetime import datetime,date
 
 @dataclass(frozen=True)
 class UsaDataPipelineFlags:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
+from typing import List
 
 import pandas as pd
 
@@ -29,7 +30,7 @@ class IndVwapFocusService:
         source_table: str,
         target_schema: str,
         target_table: str,
-        lookback_month: int = 4,
+        periods: List[str],
         is_truncate_scope: bool = True,
     ) -> None:
         exchange = exchange.upper().strip()
@@ -42,11 +43,10 @@ class IndVwapFocusService:
             )
             print(f"[VWAP] Cleared output scope: exchange={exchange} deleted_rows={deleted}")
 
-        rows = self.repo.fetch_vwap_focus_source_data(
+        rows = self.repo.fetch_vwap_source_data(
             source_schema=source_schema,
             source_table=source_table,
             exchange=exchange,
-            lookback_month=lookback_month,
         )
 
         if not rows:
@@ -55,7 +55,7 @@ class IndVwapFocusService:
 
         try:
             df = pd.DataFrame(rows)
-            summary_df = build_anchored_vwap_summary(df)
+            summary_df = build_anchored_vwap_summary(df=df, periods=periods)
 
             if summary_df.empty:
                 print(f"[VWAP] Summary empty. exchange={exchange}")
@@ -63,22 +63,23 @@ class IndVwapFocusService:
 
             created_at = datetime.now()
             out_rows = []
-
             for _, row in summary_df.iterrows():
                 out_rows.append(
                     {
                         "EXCHANGE": row["EXCHANGE"],
                         "SYMBOL": row["SYMBOL"],
+                        "VWAP_PERIOD": row["VWAP_PERIOD"],
                         "START_TIME": row["START_TIME"],
                         "END_TIME": row["END_TIME"],
                         "HIGHEST_VALUE": row["HIGHEST_VALUE"],
                         "HIGHEST_TIMESTAMP": row["HIGHEST_TIMESTAMP"],
                         "VWAP": row["VWAP"],
-
+                        "AVG_VOLUME_5D": row["AVG_VOLUME_5D"],
                         "AVG_VOLUME_10D": row["AVG_VOLUME_10D"],
                         "AVG_VOLUME_20D": row["AVG_VOLUME_20D"],
-                        "AVG_VOLUME_30D": row["AVG_VOLUME_30D"],
-
+                        "AVG_VOLUME_YESTERDAY": row["AVG_VOLUME_YESTERDAY"],
+                        "AVG_VOLUME_LASTDAY": row["AVG_VOLUME_LASTDAY"],
+                        "AVG_VOL_STATUS": row["AVG_VOL_STATUS"],
                         "CREATED_AT": created_at,
                     }
                 )
@@ -90,8 +91,8 @@ class IndVwapFocusService:
             )
 
             print(
-                f"[VWAP] exchange={exchange} lookback_month={lookback_month} "
-                f"symbols={len(summary_df)} inserted={inserted}"
+                f"[VWAP] exchange={exchange} periods={len(periods)} "
+                f"symbols={summary_df['SYMBOL'].nunique()} rows={len(summary_df)} inserted={inserted}"
             )
 
         except Exception as e:
@@ -101,7 +102,7 @@ class IndVwapFocusService:
                 calc_name=self.cfg.calc_name,
                 exchange=exchange,
                 symbol="__ALL__",
-                interval="daily",
+                interval="1min",
                 frvp_period_type=None,
                 error_type=type(e).__name__,
                 error_message=str(e),

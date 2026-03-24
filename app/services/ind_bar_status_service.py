@@ -24,21 +24,21 @@ class IndBarStatusService:
         exchange: str,
         source_schema: str,
         source_table: str,
-        target_schema: str,
-        target_table: str,
+        bs_target_schema: str,
+        bs_target_table: str,
         is_truncate_scope: bool = True,
     ) -> None:
         exchange = exchange.upper().strip()
 
-        symbols = self.repo.get_bar_status_focus_symbols(exchange=exchange)
+        symbols = self.repo.get_bar_status_focus_symbols(exchange=exchange,focus_symbol_schema='silver',focus_symbol_table='cloned_focus_symbol_list')
         if not symbols:
             print(f"[BAR_STATUS] No in-scope symbols found. exchange={exchange}")
             return
 
         if is_truncate_scope:
             deleted = self.repo.delete_ind_bar_status_scope(
-                schema=target_schema,
-                table=target_table,
+                schema=bs_target_schema,
+                table=bs_target_table,
                 exchange=exchange,
             )
             print(f"[BAR_STATUS] Cleared output scope: exchange={exchange} deleted_rows={deleted}")
@@ -97,9 +97,19 @@ class IndBarStatusService:
                     }
                 )
 
+            # 🔍 DEBUG: GREEN, RED, AMBER sayılarını yazdır
+            green_count = sum(1 for row in out_rows if row["BAR_STATUS"] == "GREEN")
+            red_count = sum(1 for row in out_rows if row["BAR_STATUS"] == "RED")
+            amber_count = sum(1 for row in out_rows if row["BAR_STATUS"] == "AMBER")
+            
+            print(
+                f"[BAR_STATUS DEBUG] exchange={exchange} "
+                f"GREEN={green_count} RED={red_count} AMBER={amber_count}"
+            )
+
             inserted = self.repo.insert_ind_bar_status_rows(
-                target_schema=target_schema,
-                target_table=target_table,
+                target_schema=bs_target_schema,
+                target_table=bs_target_table,
                 rows=out_rows,
             )
 

@@ -8,11 +8,11 @@ from app.infrastructure.database.repository import PostgresRepository
 from app.services.ind_frv_poc_profile_service import IndFrvPocProfileService
 from app.services.ind_ema_focus_service import IndEmaFocusService
 from app.services.ind_vwap_focus_service import IndVwapFocusService # type: ignore
-from app.services.email_service import send_email
 from app.services.ind_bar_status_service import IndBarStatusService # type: ignore
 from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore # type: ignore
 from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
+from app.services.email_service import send_email
 
 
 

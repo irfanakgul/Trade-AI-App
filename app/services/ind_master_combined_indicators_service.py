@@ -35,7 +35,7 @@ class IndMasterCombinedIndicatorsService:
         vwap_table: str,
     ) -> Dict[str, int]:
         exchange = exchange.upper().strip()
-
+        print('in service')
         result = self.repo.build_master_combined_indicators(
             exchange=exchange,
             target_schema=target_schema,
