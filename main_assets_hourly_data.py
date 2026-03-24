@@ -40,7 +40,7 @@ async def main():
 
         # dq
         run_dq = True,
-        dq_elemination = True,
+        dq_elemination = False,
 
 
         #=================================================================#

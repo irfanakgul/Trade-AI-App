@@ -4,7 +4,7 @@ rm -f /tmp/tradeai_bist_batch.lock
 rm -f /tmp/tradeai_*.lock
 
 ## yeniden schedule modunu aktif etmek icin
-.venv/bin/python -u -m app.scheduler.daemon --config app/scheduler/schedule.yaml
+venv/bin/python3 -u -m app.scheduler.daemon --config app/scheduler/schedule.yaml
 
 ## Printleri takip etmek icin.
 tail -f logs/initial_scope_clone.out.log
