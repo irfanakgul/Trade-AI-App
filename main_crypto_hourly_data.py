@@ -1,4 +1,4 @@
-import asyncio
+import asyncio,os
 from dotenv import load_dotenv
 
 from app.infrastructure.database.connection import Database
@@ -7,7 +7,7 @@ from app.pipelines.crypto_hourly_data_pipeline import (
     run_binance_hourly_data_pipeline,
     BinanceHourlyDataPipelineFlags,
 )
-from app.services.telegram_bot_chat_service import telegram_send_message
+from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
 
 
 async def main():
@@ -57,7 +57,14 @@ async def main():
     await run_binance_hourly_data_pipeline(repo, flags,'BINANCE')
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    telegram_send_message(
-        title="PIPELINE run",
-        text="CRYPTO pipeline has been done!")
+    try:
+        asyncio.run(main())
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="PIPELINE run",
+                text="✅ CRYPTO pipeline has been completed succesfuly")
+    except Exception as e:
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="PIPELINE ERROR!",
+                text=f"❌ CRYPTO pipeline stopt with error!\nERROR: {e}")

@@ -1,11 +1,10 @@
 from dotenv import load_dotenv
-import pandas as pd
 from app.infrastructure.database.connection import Database
 from app.infrastructure.database.repository import PostgresRepository
 from sqlalchemy import text,bindparam
-from sqlalchemy.engine import Engine
-from datetime import datetime,timezone,timedelta
-from app.services.telegram_bot_chat_service import telegram_send_message
+from datetime import datetime
+from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
+import os
 
 load_dotenv()
 
@@ -66,12 +65,19 @@ def clone_symbol_list_for_focus(
         "exchanges": exchanges,
     }
 
-clone_symbol_list_for_focus(
-    main_symbol_schema="prod",
-    main_symbol_table="FOCUS_SYMBOLS_ALL",
-)
 
-telegram_send_message(
-    title="INITIAL",
-    text="Initial symbol list cloned successfuly"
-)
+if __name__ == "__main__":
+    try:
+        clone_symbol_list_for_focus(
+            main_symbol_schema="prod",
+            main_symbol_table="FOCUS_SYMBOLS_ALL",
+        )
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="INITIAL CLONE",
+                text="✅ Initial symbols cloned succesfuly")
+    except Exception as e:
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="INITIAL CLONE ERROR!",
+                text=f"❌ Initial symbols couldn't clone!\nERROR: {e}")

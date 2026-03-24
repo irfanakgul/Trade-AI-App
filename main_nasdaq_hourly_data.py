@@ -1,4 +1,5 @@
 import asyncio
+import os
 from dotenv import load_dotenv
 
 from app.infrastructure.database.connection import Database
@@ -7,8 +8,9 @@ from app.pipelines.nasdaq_hourly_data_pipeline import (
     run_nasdaq_hourly_data_pipeline,
     NasdaqHourlyDataPipelineFlags,
 )
-from app.services.telegram_bot_chat_service import telegram_send_message
+from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
 
+exchange = "NASDAQ"
 
 async def main():
     load_dotenv()
@@ -50,12 +52,22 @@ async def main():
         run_rsi_ind = True,
         run_mfi_ind = True,
         run_combined_indicators = True,
+        
     )
 
-    await run_nasdaq_hourly_data_pipeline(repo, flags,'NASDAQ')
+    await run_nasdaq_hourly_data_pipeline(repo, flags,exchange=exchange)
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    telegram_send_message(
-        title="PIPELINE run",
-        text="NASDAQ pipeline has been done!")
+    try:
+        asyncio.run(main())
+        print(os.getenv("ENV_TELEGRAM_NOTIF"))
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="PIPELINE run",
+                text=f"✅ {exchange} pipeline has been completed succesfuly")
+    except Exception as e:
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="PIPELINE ERROR!",
+                text=f"❌ {exchange} pipeline stopt with error!\nERROR: {e}")
+        

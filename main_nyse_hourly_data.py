@@ -1,4 +1,4 @@
-import asyncio
+import asyncio,os
 from dotenv import load_dotenv
 
 from app.infrastructure.database.connection import Database
@@ -7,7 +7,7 @@ from app.pipelines.nyse_hourly_data_pipeline import (
     run_nyse_hourly_data_pipeline,
     NyseHourlyDataPipelineFlags,
 )
-from app.services.telegram_bot_chat_service import telegram_send_message
+from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
 
 
 
@@ -38,7 +38,7 @@ async def main():
         
         # dq
         run_dq = True,
-        dq_elemination = True,
+        dq_elemination = False,
 
         #=================================================================#
         # INDICATOR FLAGS
@@ -58,7 +58,14 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    telegram_send_message(
-        title="PIPELINE run",
-        text="NYSE pipeline has been done!")
+    try:
+        asyncio.run(main())
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
+            telegram_send_message(
+                title="PIPELINE run",
+                text="✅ NYSE pipeline has been completed succesfuly")
+    except Exception as e:
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
+            telegram_send_message(
+                title="PIPELINE ERROR!",
+                text=f"❌ NYSE pipeline stopt with error!\nERROR: {e}")

@@ -27,7 +27,7 @@ from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore
 from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
-from app.services.telegram_bot_chat_service import telegram_send_message
+from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
 
 
 @dataclass(frozen=True)
@@ -338,15 +338,6 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
                 drop_and_recreate = False
             )
 
-
-        # write to gg
-        repo.fn_repo_write_to_google_generic(
-            schema='logs',
-            table='dq_check_overview_assets',
-            sheet_name= 'DQ_LOG',
-            replace_append = 'append'
-            # replace_append = os.getenv("MASTERFILE_APPEND_REPLACE")
-            )
         
         # write to gg
         repo.fn_repo_write_to_google_generic(

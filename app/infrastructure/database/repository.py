@@ -1468,21 +1468,53 @@ class PostgresRepository:
 
         q = text("""
             INSERT INTO silver."IND_EMA_FOCUS" (
-                "EXCHANGE","SYMBOL","END_DATE",
-                "EMA5","EMA20","EMA_STATUS","EMA_CROSS","DAYS_SINCE_CROSS",
+                "EXCHANGE","SYMBOL","TIMESTAMP","END_DATE",
+                "EMA3","EMA5","EMA14","EMA20",
+                "EMA_STATUS_5_20","EMA_CROSS_5_20",
+                "EMA_STATUS_3_20","EMA_CROSS_3_20",
+                "EMA_STATUS_3_14","EMA_CROSS_3_14",
+                "DAYS_SINCE_CROSS_5_20","DAYS_SINCE_CROSS_3_20","DAYS_SINCE_CROSS_3_14",
                 "CREATED_AT"
             )
             VALUES (
-                :EXCHANGE,:SYMBOL,:END_DATE,
-                :EMA5,:EMA20,:EMA_STATUS,:EMA_CROSS,:DAYS_SINCE_CROSS,
+                :EXCHANGE,:SYMBOL,:TIMESTAMP,:END_DATE,
+                :EMA3,:EMA5,:EMA14,:EMA20,
+                :EMA_STATUS_5_20,:EMA_CROSS_5_20,
+                :EMA_STATUS_3_20,:EMA_CROSS_3_20,
+                :EMA_STATUS_3_14,:EMA_CROSS_3_14,
+                :DAYS_SINCE_CROSS_5_20,:DAYS_SINCE_CROSS_3_20,:DAYS_SINCE_CROSS_3_14,
                 :CREATED_AT
             );
         """)
 
-        with self.engine.begin() as conn:
-            conn.execute(q, rows)
+        normalized_rows = []
+        for r in rows:
+            rr = dict(r)
 
-        return len(rows)
+            rr.setdefault("EMA3", None)
+            rr.setdefault("EMA5", None)
+            rr.setdefault("EMA14", None)
+            rr.setdefault("EMA20", None)
+
+            rr.setdefault("EMA_STATUS_5_20", None)
+            rr.setdefault("EMA_CROSS_5_20", None)
+
+            rr.setdefault("EMA_STATUS_3_20", None)
+            rr.setdefault("EMA_CROSS_3_20", None)
+
+            rr.setdefault("EMA_STATUS_3_14", None)
+            rr.setdefault("EMA_CROSS_3_14", None)
+
+            rr.setdefault("DAYS_SINCE_CROSS_5_20", None)
+            rr.setdefault("DAYS_SINCE_CROSS_3_20", None)
+            rr.setdefault("DAYS_SINCE_CROSS_3_14", None)
+
+            normalized_rows.append(rr)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, normalized_rows)
+
+        return len(normalized_rows)
     
     # delete last n days from table
     def delete_recent_days_by_last_ts(
@@ -2215,8 +2247,6 @@ class PostgresRepository:
             conn.execute(q)
 
 
-    from typing import Dict
-
     def build_master_combined_indicators(
         self,
         exchange: str,
@@ -2236,7 +2266,7 @@ class PostgresRepository:
         - Target table is truncated before insert.
         - Log table is append-only.
         """
-
+        print('in repo')
         exchange = exchange.upper().strip()
 
         # 1) truncate master target
@@ -2264,12 +2294,21 @@ class PostgresRepository:
             "BS_PERC",
             "BS_BAR_STATUS",
 
+            "EMA_TIMESTAMP",
             "EMA_END_DATE",
+            "EMA3",
             "EMA5",
+            "EMA14",
             "EMA20",
-            "EMA_STATUS",
-            "EMA_CROSS",
-            "EMA_DAYS_SINCE_CROSS",
+            "EMA_STATUS_5_20",
+            "EMA_CROSS_5_20",
+            "EMA_STATUS_3_20",
+            "EMA_CROSS_3_20",
+            "EMA_STATUS_3_14",
+            "EMA_CROSS_3_14",
+            "EMA_DAYS_SINCE_CROSS_5_20",
+            "EMA_DAYS_SINCE_CROSS_3_20",
+            "EMA_DAYS_SINCE_CROSS_3_14",
 
             "RSI",
             "RSI_MA",
@@ -2320,12 +2359,21 @@ class PostgresRepository:
                 bs."PERC" AS "BS_PERC",
                 bs."BAR_STATUS" AS "BS_BAR_STATUS",
 
+                ema."TIMESTAMP" AS "EMA_TIMESTAMP",
                 ema."END_DATE" AS "EMA_END_DATE",
+                ema."EMA3" AS "EMA3",
                 ema."EMA5" AS "EMA5",
+                ema."EMA14" AS "EMA14",
                 ema."EMA20" AS "EMA20",
-                ema."EMA_STATUS" AS "EMA_STATUS",
-                ema."EMA_CROSS" AS "EMA_CROSS",
-                ema."DAYS_SINCE_CROSS" AS "EMA_DAYS_SINCE_CROSS",
+                ema."EMA_STATUS_5_20" AS "EMA_STATUS_5_20",
+                ema."EMA_CROSS_5_20" AS "EMA_CROSS_5_20",
+                ema."EMA_STATUS_3_20" AS "EMA_STATUS_3_20",
+                ema."EMA_CROSS_3_20" AS "EMA_CROSS_3_20",
+                ema."EMA_STATUS_3_14" AS "EMA_STATUS_3_14",
+                ema."EMA_CROSS_3_14" AS "EMA_CROSS_3_14",
+                ema."DAYS_SINCE_CROSS_5_20" AS "EMA_DAYS_SINCE_CROSS_5_20",
+                ema."DAYS_SINCE_CROSS_3_20" AS "EMA_DAYS_SINCE_CROSS_3_20",
+                ema."DAYS_SINCE_CROSS_3_14" AS "EMA_DAYS_SINCE_CROSS_3_14",
 
                 rsi."RSI" AS "RSI",
                 rsi."RSI_MA" AS "RSI_MA",

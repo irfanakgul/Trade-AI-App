@@ -1,7 +1,7 @@
 import asyncio
 from dotenv import load_dotenv
-from app.services.telegram_bot_chat_service import telegram_send_message
-
+from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
+import os
 from app.infrastructure.database.connection import Database
 from app.infrastructure.database.repository import PostgresRepository
 from app.pipelines.ams_hourly_data_pipeline import ( # type: ignore
@@ -59,7 +59,14 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    telegram_send_message(
-        title="PIPELINE run",
-        text="EURONEXT pipeline has been done!")
+    try:
+        asyncio.run(main())
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="PIPELINE run",
+                text="✅ AMS pipeline has been completed succesfuly")
+    except Exception as e:
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="PIPELINE ERROR!",
+                text=f"❌ AMS pipeline stopt with error!\nERROR: {e}")
