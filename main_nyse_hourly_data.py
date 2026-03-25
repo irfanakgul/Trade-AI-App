@@ -60,7 +60,7 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
             telegram_send_message(
                 title="PIPELINE run",
                 text="✅ NYSE pipeline has been completed succesfuly")
