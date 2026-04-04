@@ -465,10 +465,11 @@ class PostgresRepository:
 
     def get_cloned_focus_symbols(self, exchange: str) -> List[str]:
         q = text("""
-            SELECT "SYMBOL"
+            SELECT DISTINCT "SYMBOL"
             FROM silver."cloned_focus_symbol_list"
-            WHERE "OUT_OF_SCOPE" = False
-              AND "EXCHANGE" = :exchange
+            WHERE "EXCHANGE" = :exchange
+            AND "IN_SCOPE" IS TRUE
+            AND "OUT_OF_SCOPE" IS FALSE
             ORDER BY "SYMBOL";
         """)
         with self.engine.begin() as conn:
@@ -2894,17 +2895,21 @@ class PostgresRepository:
             res = conn.execute(q, {"exchange": exchange})
         return int(res.rowcount or 0)
     
-    def fetch_last_n_days_ohlc_for_exchange(
+    def fetch_last_n_days_ohlc_for_symbols(
         self,
         schema: str,
         table: str,
         exchange: str,
+        symbols: list[str],
         n_days: int,
         ts_col: str = "TIMESTAMP",
         high_col: str = "HIGH",
         low_col: str = "LOW",
         close_col: str = "CLOSE",
     ) -> list[dict]:
+        if not symbols:
+            return []
+
         if isinstance(n_days, tuple):
             n_days = int(n_days[0])
         n_days = int(n_days)
@@ -2924,6 +2929,7 @@ class PostgresRepository:
                     ) AS rn
                 FROM {schema}."{table}"
                 WHERE "EXCHANGE" = :exchange
+                AND "SYMBOL" IN :symbols
                 AND "{ts_col}" IS NOT NULL
                 AND "{high_col}" IS NOT NULL
                 AND "{low_col}" IS NOT NULL
@@ -2933,10 +2939,14 @@ class PostgresRepository:
             FROM ranked
             WHERE rn <= :n_days
             ORDER BY symbol ASC, ts ASC;
-        """)
+        """).bindparams(bindparam("symbols", expanding=True))
 
         with self.engine.begin() as conn:
-            rows = conn.execute(q, {"exchange": exchange, "n_days": n_days}).fetchall()
+            rows = conn.execute(q, {
+                "exchange": exchange,
+                "symbols": symbols,
+                "n_days": n_days,
+            }).fetchall()
 
         return [
             {
@@ -2947,7 +2957,8 @@ class PostgresRepository:
                 "LOW": r[4],
                 "CLOSE": r[5],
             }
-            for r in rows]
+            for r in rows
+        ]
     
     def insert_ind_pivot_focus_rows(
         self,
@@ -2965,7 +2976,7 @@ class PostgresRepository:
                 "PIVOT",
                 "PVT_R1","PVT_R2","PVT_R3","PVT_R4","PVT_R5",
                 "PVT_S1","PVT_S2","PVT_S3","PVT_S4","PVT_S5",
-                "CREATED_AT"
+                "STATUS","CREATED_AT"
             )
             VALUES (
                 :EXCHANGE,:SYMBOL,
@@ -2973,7 +2984,7 @@ class PostgresRepository:
                 :PIVOT,
                 :PVT_R1,:PVT_R2,:PVT_R3,:PVT_R4,:PVT_R5,
                 :PVT_S1,:PVT_S2,:PVT_S3,:PVT_S4,:PVT_S5,
-                :CREATED_AT
+                :STATUS,:CREATED_AT
             );
         """)
 
@@ -2991,6 +3002,7 @@ class PostgresRepository:
             rr.setdefault("PVT_S3", None)
             rr.setdefault("PVT_S4", None)
             rr.setdefault("PVT_S5", None)
+            rr.setdefault("STATUS", "FAILED")
             normalized_rows.append(rr)
 
         with self.engine.begin() as conn:
