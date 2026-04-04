@@ -19,15 +19,14 @@ async def main():
 
     flags = OandaHourlyDataPipelineFlags(
 
-        # flags ingest
+        #=================================================================#
+        # DATA INGESTION
+        #=================================================================#
         ingest=True,
-        
-        # flags SYNC
         sync_archive_to_working = True,
         trim_history = True,
-        build_focus_dataset = True,
+        build_focus_dataset= True,
         run_dq = True,
-
 
         #=================================================================#
         # INDICATOR FLAGS
@@ -42,8 +41,7 @@ async def main():
         run_mfi_ind = True,
         run_pivot_ind = True,
         run_source_end_dates_ind = True,
-        run_combined_indicators = True,
-
+        run_combined_indicators = True
     )
 
     await run_oanda_hourly_data_pipeline(repo, flags,'OANDA')

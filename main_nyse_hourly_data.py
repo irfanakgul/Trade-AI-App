@@ -19,11 +19,14 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = NyseHourlyDataPipelineFlags(
-        ingest=True,
         
+        #=================================================================#
+        # DATA INGESTION
+        #=================================================================#
+        ingest=True,
         sync_archive_to_working = True,
         trim_history = True,
-        build_focus_dataset=True,
+        build_focus_dataset= True,
         run_dq = True,
 
         #=================================================================#
@@ -38,7 +41,8 @@ async def main():
         run_rsi_ind = True,
         run_mfi_ind = True,
         run_pivot_ind = True,
-        run_combined_indicators = True,
+        run_source_end_dates_ind = True,
+        run_combined_indicators = True
     )
 
     await run_nyse_hourly_data_pipeline(repo, flags,'NYSE')

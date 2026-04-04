@@ -22,11 +22,7 @@ async def main():
         #=================================================================#
         # DATA INGESTION
         #=================================================================#
-
-        #data pull
         ingest=True,
-
-        # prep
         sync_archive_to_working = True,
         trim_history = True,
         build_focus_dataset= True,
