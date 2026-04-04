@@ -37,7 +37,6 @@ async def main():
         trim_history = True,
         build_focus_dataset= True,
         run_dq = True,
-        dq_elemination = False,
 
         #=================================================================#
         # INDICATOR FLAGS

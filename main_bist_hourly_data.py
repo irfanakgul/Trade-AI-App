@@ -32,7 +32,6 @@ async def main():
         trim_history = False,
         build_focus_dataset=False,
         run_dq = False,
-        dq_elemination = False,
         
         
         #=================================================================#

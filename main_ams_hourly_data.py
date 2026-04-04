@@ -30,16 +30,9 @@ async def main():
 
         # flags SYNC
         sync_archive_to_working = True,
-        
-        # flags TRIM365
         trim_history = True,
-
-        # flags ind build dataset
         build_focus_dataset = True,
-        
-        # flags ind build dataset   
         run_dq=True,
-        dq_elemination = False,
 
         #=================================================================#
         # INDICATOR FLAGS
@@ -53,6 +46,7 @@ async def main():
         run_rsi_ind = True,
         run_mfi_ind = True,
         run_pivot_ind = True,
+        run_source_end_dates_ind = True,
         run_combined_indicators = True,
     )
 
