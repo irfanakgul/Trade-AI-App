@@ -33,6 +33,8 @@ from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ig
 from app.services.ind_end_dates_service import IndEndDatesService
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
+
+
 @dataclass(frozen=True)
 class BistHourlyDataPipelineFlags:
     # Step-1: ingestion
@@ -45,9 +47,9 @@ class BistHourlyDataPipelineFlags:
     use_db_last_timestamp: bool = True
     start_date: Optional[str] = "2024-01-01"
 
-    safe_days_back: int = 1
+    safe_days_back: int = 2
     main_provider_retries: int = 2
-    max_concurrent_symbols: int = 8
+    max_concurrent_symbols: int = 3
 
     symbol_schema: str = "prod"
     symbol_table: str = "FOCUS_SYMBOLS_ALL"
@@ -576,10 +578,12 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
 
             frvp_table="IND_FRV_POC_PROFILE",
             bs_table="IND_BAR_STATUS",
+            end_dates_table="IND_END_DATES",
             ema_table="IND_EMA_FOCUS",
             rsi_table="IND_RSI_FOCUS",
             mfi_table="IND_MFI_FOCUS",
             vwap_table="IND_VWAP_FOCUS",
+            pivot_table="IND_PIVOT_FOCUS",
         )
 
         # failed dq symbols will be out of scope

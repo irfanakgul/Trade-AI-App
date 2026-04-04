@@ -2243,7 +2243,7 @@ class PostgresRepository:
     ###########################################
 
     def truncate_table(self, schema: str, table: str) -> None:
-        q = text(f'TRUNCATE TABLE "{schema}"."{table}";')  # ✅ HER İKİSİ TİRNAKLI
+        q = text(f'TRUNCATE TABLE "{schema}"."{table}";')  
         with self.engine.begin() as conn:
             conn.execute(q)
 
@@ -2257,23 +2257,23 @@ class PostgresRepository:
         log_table: str,
         frvp_table: str,
         bs_table: str,
+        end_dates_table: str,
         ema_table: str,
         rsi_table: str,
         mfi_table: str,
         vwap_table: str,
+        pivot_table: str,
     ) -> Dict[str, int]:
         """
         Build master combined indicators table from silver indicator tables.
         - Target table is truncated before insert.
         - Log table is append-only.
         """
-        print('in repo')
         exchange = exchange.upper().strip()
 
         # 1) truncate master target
         self.truncate_table(target_schema, target_table)
 
-        # Insert edilecek kolonları tek yerde tanımla
         insert_columns = [
             "EXCHANGE",
             "SYMBOL",
@@ -2294,6 +2294,12 @@ class PostgresRepository:
             "BS_DIFFER",
             "BS_PERC",
             "BS_BAR_STATUS",
+
+            "RAW_END_DATE",
+            "BRONZE_END_DATE",
+            "SILVER_END_DATE",
+            "SILVER_CONVERTED_END_DATE",
+            "EXPECTED_END_DATE",
 
             "EMA_TIMESTAMP",
             "EMA_END_DATE",
@@ -2332,6 +2338,22 @@ class PostgresRepository:
             "VOL_LASTDAY",
             "VOL_STATUS",
 
+            "PVT_START_DATE",
+            "PVT_END_DATE",
+            "PVT_YEAR",
+            "PIVOT",
+            "PVT_R1",
+            "PVT_R2",
+            "PVT_R3",
+            "PVT_R4",
+            "PVT_R5",
+            "PVT_S1",
+            "PVT_S2",
+            "PVT_S3",
+            "PVT_S4",
+            "PVT_S5",
+            "PVT_STATUS",
+
             "CREATED_AT",
             "CREATED_DAY",
         ]
@@ -2359,6 +2381,12 @@ class PostgresRepository:
                 bs."DIFFER" AS "BS_DIFFER",
                 bs."PERC" AS "BS_PERC",
                 bs."BAR_STATUS" AS "BS_BAR_STATUS",
+
+                ed."RAW_END_DATE" AS "RAW_END_DATE",
+                ed."BRONZE_END_DATE" AS "BRONZE_END_DATE",
+                ed."SILVER_END_DATE" AS "SILVER_END_DATE",
+                ed."SILVER_CONVERTED_END_DATE" AS "SILVER_CONVERTED_END_DATE",
+                ed."EXPECTED_END_DATE" AS "EXPECTED_END_DATE",
 
                 ema."TIMESTAMP" AS "EMA_TIMESTAMP",
                 ema."END_DATE" AS "EMA_END_DATE",
@@ -2397,6 +2425,22 @@ class PostgresRepository:
                 vwap."AVG_VOLUME_LASTDAY" AS "VOL_LASTDAY",
                 vwap."AVG_VOL_STATUS" AS "VOL_STATUS",
 
+                pvt."PVT_START_DATE" AS "PVT_START_DATE",
+                pvt."PVT_END_DATE" AS "PVT_END_DATE",
+                pvt."PVT_YEAR" AS "PVT_YEAR",
+                pvt."PIVOT" AS "PIVOT",
+                pvt."PVT_R1" AS "PVT_R1",
+                pvt."PVT_R2" AS "PVT_R2",
+                pvt."PVT_R3" AS "PVT_R3",
+                pvt."PVT_R4" AS "PVT_R4",
+                pvt."PVT_R5" AS "PVT_R5",
+                pvt."PVT_S1" AS "PVT_S1",
+                pvt."PVT_S2" AS "PVT_S2",
+                pvt."PVT_S3" AS "PVT_S3",
+                pvt."PVT_S4" AS "PVT_S4",
+                pvt."PVT_S5" AS "PVT_S5",
+                pvt."STATUS" AS "PVT_STATUS",
+
                 CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS "CREATED_AT",
                 TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY') AS "CREATED_DAY"
 
@@ -2405,6 +2449,10 @@ class PostgresRepository:
             LEFT JOIN silver."{bs_table}" bs
                 ON frvp."EXCHANGE" = bs."EXCHANGE"
             AND frvp."SYMBOL" = bs."SYMBOL"
+
+            LEFT JOIN silver."{end_dates_table}" ed
+                ON frvp."EXCHANGE" = ed."EXCHANGE"
+            AND frvp."SYMBOL" = ed."SYMBOL"
 
             LEFT JOIN silver."{ema_table}" ema
                 ON frvp."EXCHANGE" = ema."EXCHANGE"
@@ -2422,6 +2470,10 @@ class PostgresRepository:
                 ON frvp."EXCHANGE" = vwap."EXCHANGE"
             AND frvp."SYMBOL" = vwap."SYMBOL"
             AND frvp."FRVP_PERIOD_TYPE" = vwap."VWAP_PERIOD"
+
+            LEFT JOIN silver."{pivot_table}" pvt
+                ON frvp."EXCHANGE" = pvt."EXCHANGE"
+            AND frvp."SYMBOL" = pvt."SYMBOL"
 
             WHERE frvp."EXCHANGE" = :exchange
             AND frvp."IN_SCOPE_FOR_EMA_RSI" = TRUE

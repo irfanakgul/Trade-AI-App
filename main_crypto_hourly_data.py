@@ -25,12 +25,6 @@ async def main():
 
         #data pull
         ingest=True,
-        main_provider="binance_api",
-        alternative_provider="tvdatafeed",
-        start_date="2024-01-01",
-        safe_days_back=1,
-        main_provider_retries=2,
-        max_concurrent_symbols=3,
 
         # prep
         sync_archive_to_working = True,

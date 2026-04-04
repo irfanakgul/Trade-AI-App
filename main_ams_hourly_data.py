@@ -21,12 +21,7 @@ async def main():
 
         # flags INGESTION
         ingest=True,
-        main_provider="tvdatafeed",
-        alternative_provider="yahooquery",
-        start_date="2024-01-01",
-        safe_days_back=1,
-        main_provider_retries=2,
-        max_concurrent_symbols=4,
+
 
         # flags SYNC
         sync_archive_to_working = True,

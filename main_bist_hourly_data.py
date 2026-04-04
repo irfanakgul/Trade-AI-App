@@ -19,28 +19,23 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistHourlyDataPipelineFlags(
-        ingest=True,
-        main_provider="tvdatafeed",
-        alternative_provider="yahooquery",
-        start_date="2024-01-01",
-        safe_days_back=2,
-        main_provider_retries=2,
-        max_concurrent_symbols=3,
+        ingest=False,
+
 
          # flags SYNC
-        sync_archive_to_working = True,
-        trim_history = True,
-        build_focus_dataset=True,
-        run_dq = True,
+        sync_archive_to_working = False,
+        trim_history = False,
+        build_focus_dataset=False,
+        run_dq = False,
         
         
         #=================================================================#
         # INDICATOR FLAGS
         #=================================================================#
 
-        bar_status=True,
-        run_frvp=True,
-        run_convert_daily = True,
+        bar_status=False,
+        run_frvp=False,
+        run_convert_daily = False,
         run_ema_ind = True,
         run_vwap_ind = True,
         run_rsi_ind = True,
@@ -58,12 +53,12 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
             telegram_send_message(
                 title="PIPELINE run",
                 text="✅ BIST pipeline has been completed succesfuly")
     except Exception as e:
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
             telegram_send_message(
                 title="PIPELINE ERROR!",
                 text=f"❌ BIST pipeline stopt with error!\nERROR: {e}")

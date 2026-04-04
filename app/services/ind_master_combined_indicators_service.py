@@ -29,13 +29,15 @@ class IndMasterCombinedIndicatorsService:
         log_table: str,
         frvp_table: str,
         bs_table: str,
+        end_dates_table: str,
         ema_table: str,
         rsi_table: str,
         mfi_table: str,
         vwap_table: str,
+        pivot_table: str,
     ) -> Dict[str, int]:
         exchange = exchange.upper().strip()
-        print('in service')
+
         result = self.repo.build_master_combined_indicators(
             exchange=exchange,
             target_schema=target_schema,
@@ -44,10 +46,12 @@ class IndMasterCombinedIndicatorsService:
             log_table=log_table,
             frvp_table=frvp_table,
             bs_table=bs_table,
+            end_dates_table=end_dates_table,
             ema_table=ema_table,
             rsi_table=rsi_table,
             mfi_table=mfi_table,
             vwap_table=vwap_table,
+            pivot_table=pivot_table,
         )
 
         print(

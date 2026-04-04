@@ -20,12 +20,6 @@ async def main():
 
     flags = NyseHourlyDataPipelineFlags(
         ingest=True,
-        main_provider="tvdatafeed",
-        alternative_provider="not_implemented",
-        start_date="2024-01-01",
-        safe_days_back=1,
-        main_provider_retries=3,
-        max_concurrent_symbols=2,
         
         sync_archive_to_working = True,
         trim_history = True,

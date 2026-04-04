@@ -43,8 +43,8 @@ class NyseHourlyDataPipelineFlags:
     start_date: Optional[str] = "2024-01-01"
 
     safe_days_back: int = 1
-    main_provider_retries: int = 2
-    max_concurrent_symbols: int = 8
+    main_provider_retries: int = 3
+    max_concurrent_symbols: int = 2
 
     symbol_schema: str = "prod"
     symbol_table: str = "FOCUS_SYMBOLS_ALL"
@@ -568,10 +568,12 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
 
             frvp_table="IND_FRV_POC_PROFILE",
             bs_table="IND_BAR_STATUS",
+            end_dates_table="IND_END_DATES",
             ema_table="IND_EMA_FOCUS",
             rsi_table="IND_RSI_FOCUS",
             mfi_table="IND_MFI_FOCUS",
             vwap_table="IND_VWAP_FOCUS",
+            pivot_table="IND_PIVOT_FOCUS",
         )
 
         # failed dq symbols will be out of scope
