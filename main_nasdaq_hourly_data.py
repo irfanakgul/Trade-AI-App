@@ -51,6 +51,7 @@ async def main():
         run_vwap_ind = True,
         run_rsi_ind = True,
         run_mfi_ind = True,
+        run_pivot_ind = True,
         run_combined_indicators = True,
         
     )

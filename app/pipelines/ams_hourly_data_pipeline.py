@@ -28,6 +28,7 @@ from app.services.email_service import send_email
 from app.services.ind_bar_status_service import IndBarStatusService # type: ignore
 from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore # type: ignore
 from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
+from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
 
@@ -78,6 +79,7 @@ class EuronextHourlyDataPipelineFlags:
     run_vwap_ind:bool = True
     run_rsi_ind:bool = True
     run_mfi_ind:bool = True
+    run_pivot_ind:bool = True
     run_combined_indicators:bool = True
 
 
@@ -511,7 +513,28 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
         print('❌ [IND-MFI] ams skipped!')
 
     #---------------------------------
-    # IND-8) MASTER IND FILE
+    # IND-8) PIVOT CALC
+    #---------------------------------
+    if flags.run_pivot_ind:
+        print(f"[IND-PIVOT] ams started ({exchange})...")
+
+        svc = IndPivotFocusService(repo=repo)
+        svc.run(
+            exchange = exchange,
+            input_schema="silver",
+            input_table="converted_daily_dataset_ams",
+            output_schema="silver",
+            output_table="IND_PIVOT_FOCUS",
+            lookback_days=365,
+            is_truncate_scope=True,
+        )
+
+    else:
+        print('❌ [IND-PIVOT] ams skipped!')
+
+
+    #---------------------------------
+    # IND-9) MASTER IND FILE
     #---------------------------------
     
     if flags.run_combined_indicators:

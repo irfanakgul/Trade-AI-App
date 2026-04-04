@@ -2875,3 +2875,125 @@ class PostgresRepository:
             "reason": reason,
             "note": "OOS_REASON values are APPENDED with ' || ' separator for multiple elimination reasons",
         }
+    
+    # ==============================
+    # IND PIVOT CALC
+    # ==============================
+
+    def delete_indicator_scope_by_exchange(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+    ) -> int:
+        q = text(f'''
+            DELETE FROM {schema}."{table}"
+            WHERE "EXCHANGE" = :exchange;
+        ''')
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+    def fetch_last_n_days_ohlc_for_exchange(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+        n_days: int,
+        ts_col: str = "TIMESTAMP",
+        high_col: str = "HIGH",
+        low_col: str = "LOW",
+        close_col: str = "CLOSE",
+    ) -> list[dict]:
+        if isinstance(n_days, tuple):
+            n_days = int(n_days[0])
+        n_days = int(n_days)
+
+        q = text(f"""
+            WITH ranked AS (
+                SELECT
+                    "EXCHANGE" AS exchange,
+                    "SYMBOL" AS symbol,
+                    "{ts_col}" AS ts,
+                    "{high_col}"::double precision AS high,
+                    "{low_col}"::double precision AS low,
+                    "{close_col}"::double precision AS close,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY "SYMBOL"
+                        ORDER BY "{ts_col}" DESC
+                    ) AS rn
+                FROM {schema}."{table}"
+                WHERE "EXCHANGE" = :exchange
+                AND "{ts_col}" IS NOT NULL
+                AND "{high_col}" IS NOT NULL
+                AND "{low_col}" IS NOT NULL
+                AND "{close_col}" IS NOT NULL
+            )
+            SELECT exchange, symbol, ts, high, low, close
+            FROM ranked
+            WHERE rn <= :n_days
+            ORDER BY symbol ASC, ts ASC;
+        """)
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"exchange": exchange, "n_days": n_days}).fetchall()
+
+        return [
+            {
+                "EXCHANGE": r[0],
+                "SYMBOL": r[1],
+                "TIMESTAMP": r[2],
+                "HIGH": r[3],
+                "LOW": r[4],
+                "CLOSE": r[5],
+            }
+            for r in rows]
+    
+    def insert_ind_pivot_focus_rows(
+        self,
+        schema: str,
+        table: str,
+        rows: list[dict],
+    ) -> int:
+        if not rows:
+            return 0
+
+        q = text(f"""
+            INSERT INTO {schema}."{table}" (
+                "EXCHANGE","SYMBOL",
+                "PVT_START_DATE","PVT_END_DATE","PVT_YEAR",
+                "PIVOT",
+                "PVT_R1","PVT_R2","PVT_R3","PVT_R4","PVT_R5",
+                "PVT_S1","PVT_S2","PVT_S3","PVT_S4","PVT_S5",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,:SYMBOL,
+                :PVT_START_DATE,:PVT_END_DATE,:PVT_YEAR,
+                :PIVOT,
+                :PVT_R1,:PVT_R2,:PVT_R3,:PVT_R4,:PVT_R5,
+                :PVT_S1,:PVT_S2,:PVT_S3,:PVT_S4,:PVT_S5,
+                :CREATED_AT
+            );
+        """)
+
+        normalized_rows = []
+        for r in rows:
+            rr = dict(r)
+            rr.setdefault("PIVOT", None)
+            rr.setdefault("PVT_R1", None)
+            rr.setdefault("PVT_R2", None)
+            rr.setdefault("PVT_R3", None)
+            rr.setdefault("PVT_R4", None)
+            rr.setdefault("PVT_R5", None)
+            rr.setdefault("PVT_S1", None)
+            rr.setdefault("PVT_S2", None)
+            rr.setdefault("PVT_S3", None)
+            rr.setdefault("PVT_S4", None)
+            rr.setdefault("PVT_S5", None)
+            normalized_rows.append(rr)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, normalized_rows)
+
+        return len(normalized_rows)
