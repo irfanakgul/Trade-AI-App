@@ -50,6 +50,7 @@ async def main():
         run_rsi_ind = True,
         run_mfi_ind = True,
         run_pivot_ind = True,
+        run_source_end_dates_ind = True,
         run_combined_indicators = True
 
     )

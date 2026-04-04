@@ -28,17 +28,10 @@ async def main():
         main_provider_retries=2,
         max_concurrent_symbols=2,
         
-
         # flags SYNC
         sync_archive_to_working = True,
-        
-        # flags TRIM365
         trim_history = True,
-
-        # flags build indicator focus dataset
         build_focus_dataset = True,
-
-        # dq
         run_dq = True,
 
 
@@ -54,6 +47,7 @@ async def main():
         run_rsi_ind = True,
         run_mfi_ind = True,
         run_pivot_ind = True,
+        run_source_end_dates_ind = True,
         run_combined_indicators = True,
 
     )

@@ -26,6 +26,7 @@ async def main():
         safe_days_back=1,
         main_provider_retries=3,
         max_concurrent_symbols=2,
+        
         sync_archive_to_working = True,
         trim_history = True,
         build_focus_dataset=True,
