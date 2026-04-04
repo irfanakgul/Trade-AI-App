@@ -25,6 +25,8 @@ from app.services.email_service import send_email
 from app.services.ind_bar_status_service import IndBarStatusService # type: ignore
 from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore # type: ignore
 from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
+from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ignore
+from app.services.ind_end_dates_service import IndEndDatesService
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
 from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
@@ -44,7 +46,7 @@ class OandaHourlyDataPipelineFlags:
 
     safe_days_back: int = 1
     main_provider_retries: int = 2
-    max_concurrent_symbols: int = 8
+    max_concurrent_symbols: int = 2
 
     symbol_schema: str = "prod"
     symbol_table: str = "FOCUS_SYMBOLS_ALL"
@@ -78,6 +80,8 @@ class OandaHourlyDataPipelineFlags:
     run_vwap_ind:bool = True
     run_rsi_ind:bool = True
     run_mfi_ind:bool = True
+    run_pivot_ind:bool = True
+    run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
 
 
@@ -428,7 +432,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
         stats = repo.build_converted_daily_for_ema_rsi_scope(
             exchange=exchange,
             interval='hourly',  
-            start_trading_days_back=130,
+            start_trading_days_back=365,
             source_schema='silver',
             source_table='indicators_assets_focus_dataset',
             ts_col="TS",
@@ -518,7 +522,62 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
         print('❌ [IND-MFI] assets skipped!')
 
     #---------------------------------
-    # IND-8) MASTER IND FILE
+    # IND-8) PIVOT CALC
+    #---------------------------------
+    if flags.run_pivot_ind:
+        print(f"[IND-PIVOT] assets started ({exchange})...")
+
+        svc = IndPivotFocusService(repo=repo)
+        svc.run(
+            exchange = exchange,
+            input_schema="silver",
+            input_table="converted_daily_dataset_assets",
+            output_schema="silver",
+            output_table="IND_PIVOT_FOCUS",
+            lookback_days=365,
+            is_truncate_scope=True,
+        )
+
+    else:
+        print('❌ [IND-PIVOT] assets skipped!')
+
+    #---------------------------------
+    # IND-9) END DATES
+    #---------------------------------
+    if flags.run_source_end_dates_ind:
+        print(f"[IND-END-DATES] started ({exchange})...")
+
+        svc = IndEndDatesService(repo=repo)
+        svc.run(
+            exchange=exchange,
+
+            raw_schema="raw",
+            raw_table="assets_hourly_archive",
+            raw_ts_col="TIMESTAMP",
+
+            bronze_schema="bronze",
+            bronze_table="synced_working_assets_hourly",
+            bronze_ts_col="TIMESTAMP",
+
+            silver_schema="silver",
+            silver_table="indicators_assets_focus_dataset",
+            silver_ts_col="TIMESTAMP",
+
+            silver_conv_schema="silver",
+            silver_conv_table="converted_daily_dataset_assets",
+            silver_conv_ts_col="TIMESTAMP",
+
+            market_close_hour=0,
+            market_close_minute=0,
+            is_truncate_scope=True,
+        )
+
+    else:
+        print(f"❌ [IND-END-DATES] {exchange.lower()} skipped!")
+
+
+    #---------------------------------
+    # IND-9) MASTER IND FILE
     #---------------------------------
     
     if flags.run_combined_indicators:
@@ -533,10 +592,12 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
 
             frvp_table="IND_FRV_POC_PROFILE",
             bs_table="IND_BAR_STATUS",
+            end_dates_table="IND_END_DATES",
             ema_table="IND_EMA_FOCUS",
             rsi_table="IND_RSI_FOCUS",
             mfi_table="IND_MFI_FOCUS",
             vwap_table="IND_VWAP_FOCUS",
+            pivot_table="IND_PIVOT_FOCUS",
         )
 
         # write to gg

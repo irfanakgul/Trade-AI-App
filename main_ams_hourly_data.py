@@ -21,25 +21,13 @@ async def main():
 
         # flags INGESTION
         ingest=True,
-        main_provider="tvdatafeed",
-        alternative_provider="yahooquery",
-        start_date="2024-01-01",
-        safe_days_back=1,
-        main_provider_retries=2,
-        max_concurrent_symbols=4,
+
 
         # flags SYNC
         sync_archive_to_working = True,
-        
-        # flags TRIM365
         trim_history = True,
-
-        # flags ind build dataset
         build_focus_dataset = True,
-        
-        # flags ind build dataset   
         run_dq=True,
-        dq_elemination = True,
 
         #=================================================================#
         # INDICATOR FLAGS
@@ -52,6 +40,8 @@ async def main():
         run_vwap_ind = True,
         run_rsi_ind = True,
         run_mfi_ind = True,
+        run_pivot_ind = True,
+        run_source_end_dates_ind = True,
         run_combined_indicators = True,
     )
 
