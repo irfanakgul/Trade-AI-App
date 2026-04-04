@@ -420,7 +420,7 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
         stats = repo.build_converted_daily_for_ema_rsi_scope(
             exchange=exchange,
             interval='hourly',  
-            start_trading_days_back=130,
+            start_trading_days_back=365,
             source_schema='silver',
             source_table='indicators_ams_focus_dataset',
             ts_col="TS",

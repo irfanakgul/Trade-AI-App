@@ -1,6 +1,7 @@
 from __future__ import annotations
-
+import os
 from pathlib import Path
+from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
 
 from app.backup.config import BackupConfig
 from app.backup.service import PostgresBackupService
@@ -28,4 +29,15 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+            telegram_send_message(
+                title="BACKUP run",
+                text="✅ cloud db has been download into local")
+    except Exception as e:
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
+            telegram_send_message(
+                title="PIPELINE ERROR!",
+                text=f"❌ cloud db stopt with error!\nERROR: {e}")
+
