@@ -3009,3 +3009,74 @@ class PostgresRepository:
             conn.execute(q, normalized_rows)
 
         return len(normalized_rows)
+    
+    # ==============================
+    # IND CALC END DATES FOR SOURCES
+    # ==============================
+    def delete_ind_end_dates_scope(self, exchange: str) -> int:
+        q = text("""
+            DELETE FROM silver."IND_END_DATES"
+            WHERE "EXCHANGE" = :exchange;
+        """)
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+    def fetch_symbol_end_dates(
+        self,
+        schema: str,
+        table: str,
+        symbols: List[str],
+        ts_col: str,
+    ) -> Dict[str, Optional[datetime]]:
+        if not symbols:
+            return {}
+
+        q = text(f"""
+            SELECT
+                "SYMBOL" AS symbol,
+                MAX("{ts_col}") AS end_ts
+            FROM {schema}."{table}"
+            WHERE "SYMBOL" IN :symbols
+            GROUP BY "SYMBOL"
+        """).bindparams(bindparam("symbols", expanding=True))
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(q, {"symbols": symbols}).fetchall()
+
+        result = {s: None for s in symbols}
+        for r in rows:
+            result[str(r[0])] = r[1]
+        return result
+    
+    def insert_ind_end_dates_rows(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+
+        q = text("""
+            INSERT INTO silver."IND_END_DATES" (
+                "EXCHANGE",
+                "SYMBOL",
+                "RAW_END_DATE",
+                "BRONZE_END_DATE",
+                "SILVER_END_DATE",
+                "SILVER_CONVERTED_END_DATE",
+                "EXPECTED_END_DATE",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,
+                :SYMBOL,
+                :RAW_END_DATE,
+                :BRONZE_END_DATE,
+                :SILVER_END_DATE,
+                :SILVER_CONVERTED_END_DATE,
+                :EXPECTED_END_DATE,
+                :CREATED_AT
+            );
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)

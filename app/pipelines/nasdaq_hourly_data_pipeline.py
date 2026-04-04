@@ -26,6 +26,7 @@ from app.services.ind_bar_status_service import IndBarStatusService # type: igno
 from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore # type: ignore
 from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
 from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ignore
+from app.services.ind_end_dates_service import IndEndDatesService
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
 @dataclass(frozen=True)
@@ -75,6 +76,7 @@ class NasdaqHourlyDataPipelineFlags:
     run_rsi_ind:bool = True
     run_mfi_ind:bool = True
     run_pivot_ind:bool = True
+    run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
 
 
@@ -515,6 +517,39 @@ async def run_nasdaq_hourly_data_pipeline(repo, flags: NasdaqHourlyDataPipelineF
     else:
         print('❌ [IND-PIVOT] nasdaq skipped!')
 
+    #---------------------------------
+    # IND-9) END DATES
+    #---------------------------------
+    if flags.run_source_end_dates_ind:
+        print(f"[IND-END-DATES] started ({exchange})...")
+
+        svc = IndEndDatesService(repo=repo)
+        svc.run(
+            exchange=exchange,
+
+            raw_schema="raw",
+            raw_table="nasdaq_hourly_archive",
+            raw_ts_col="TIMESTAMP",
+
+            bronze_schema="bronze",
+            bronze_table="synced_working_nasdaq_hourly",
+            bronze_ts_col="TIMESTAMP",
+
+            silver_schema="silver",
+            silver_table="indicators_nasdaq_focus_dataset",
+            silver_ts_col="TIMESTAMP",
+
+            silver_conv_schema="silver",
+            silver_conv_table="converted_daily_dataset_nasdaq",
+            silver_conv_ts_col="TIMESTAMP",
+
+            market_close_hour=0,
+            market_close_minute=0,
+            is_truncate_scope=True,
+        )
+
+    else:
+        print(f"❌ [IND-END-DATES] {exchange.lower()} skipped!")
 
     #---------------------------------
     # IND-9) MASTER IND FILE
