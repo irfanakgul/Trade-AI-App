@@ -19,7 +19,7 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = NyseHourlyDataPipelineFlags(
-        
+
         #=================================================================#
         # DATA INGESTION
         #=================================================================#
@@ -56,7 +56,7 @@ if __name__ == "__main__":
                 title="PIPELINE run",
                 text="✅ NYSE pipeline has been completed succesfuly")
     except Exception as e:
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
             telegram_send_message(
                 title="PIPELINE ERROR!",
                 text=f"❌ NYSE pipeline stopt with error!\nERROR: {e}")

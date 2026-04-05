@@ -19,11 +19,11 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistHourlyDataPipelineFlags(
-        
+
         #=================================================================#
         # DATA INGESTION
         #=================================================================#
-        ingest=True,
+        ingest=False,
         sync_archive_to_working = True,
         trim_history = True,
         build_focus_dataset= True,
@@ -32,7 +32,6 @@ async def main():
         #=================================================================#
         # INDICATOR FLAGS
         #=================================================================#
-
         bar_status=True,
         run_frvp=True,
         run_convert_daily = True,
