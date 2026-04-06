@@ -56,6 +56,7 @@ if __name__ == "__main__":
                 title="PIPELINE run",
                 text="✅ BIST pipeline has been completed succesfuly")
     except Exception as e:
+        print(e)
         if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
             telegram_send_message(
                 title="PIPELINE ERROR!",
