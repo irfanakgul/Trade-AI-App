@@ -623,9 +623,9 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
         svc.run(
             exchange=exchange,
             input_schema="gold",
-            input_table=f"{exchange}_master_combined_indicators",
+            input_table=f"nyse_master_combined_indicators",
             output_schema="gold",
-            output_table=f"{exchange}_evaluation_master_score",
+            output_table=f"nyse_evaluation_master_score",
             stop_loss_perc=3.0,
             entry_markup_perc=0.5,
             top_n=5,

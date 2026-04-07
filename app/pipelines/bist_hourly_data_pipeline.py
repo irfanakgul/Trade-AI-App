@@ -631,9 +631,9 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
         svc.run(
             exchange=exchange,
             input_schema="gold",
-            input_table=f"{exchange}_master_combined_indicators",
+            input_table=f"bist_master_combined_indicators",
             output_schema="gold",
-            output_table=f"{exchange}_evaluation_master_score",
+            output_table=f"bist_evaluation_master_score",
             stop_loss_perc=3.0,
             entry_markup_perc=0.5,
             top_n=5,
