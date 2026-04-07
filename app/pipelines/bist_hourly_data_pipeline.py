@@ -33,6 +33,7 @@ from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ig
 from app.services.ind_end_dates_service import IndEndDatesService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
+from app.services.master_score_service import MasterScoreService
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,11 @@ class BistHourlyDataPipelineFlags:
     run_pivot_ind:bool = True
     run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
+
+    #-------------------------------------
+    # indicator flags
+    #-------------------------------------
+    run_master_score: bool = True
 
 
 def _build_provider(name: str):
@@ -613,3 +619,29 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
         print('❌ [MASTERFILE] skipped!')
+
+    #---------------------------------
+    # MASTER SCORE CALC
+    #---------------------------------
+    if flags.run_master_score:
+        print(f"[MASTER-SCORE] started: ({exchange})...")
+
+        svc = MasterScoreService(repo=repo)
+        run_ts = datetime.now()
+        svc.run(
+            exchange=exchange,
+            input_schema="gold",
+            input_table=f"{exchange}_master_combined_indicators",
+            output_schema="gold",
+            output_table=f"{exchange}_evaluation_master_score",
+            stop_loss_perc=3.0,
+            entry_markup_perc=0.5,
+            top_n=5,
+            created_at=run_ts,
+            send_telegram=True,
+            telegram_title=f"{exchange} TOP 10",
+
+        )
+
+    else:
+        print(f"❌ [MASTER-SCORE] {exchange} skipped!")

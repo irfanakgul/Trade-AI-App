@@ -3134,3 +3134,57 @@ class PostgresRepository:
             conn.execute(q, rows)
 
         return len(rows)
+    
+    # ====================================================
+    # CALC MASTER SCORE
+    # ====================================================
+
+
+    def get_table_as_dataframe(
+        self,
+        schema_name: str,
+        table_name: str,
+        exchange: str | None = None,
+    ) -> pd.DataFrame:
+        sql = f'SELECT * FROM {schema_name}."{table_name}"'
+        params = {}
+
+        if exchange is not None:
+            sql += ' WHERE "EXCHANGE" = :exchange'
+            params["exchange"] = exchange
+
+        with self.engine.begin() as conn:
+            return pd.read_sql(text(sql), conn, params=params)
+
+
+    def truncate_table(
+        self,
+        schema_name: str,
+        table_name: str,
+    ) -> None:
+        from sqlalchemy import text
+
+        sql = text(f'TRUNCATE TABLE {schema_name}."{table_name}"')
+        with self.engine.begin() as conn:
+            conn.execute(sql)
+
+
+    def insert_dataframe(
+        self,
+        df: pd.DataFrame,
+        schema_name: str,
+        table_name: str,
+    ) -> None:
+        if df.empty:
+            return
+
+        with self.engine.begin() as conn:
+            df.to_sql(
+                name=table_name,
+                schema=schema_name,
+                con=conn,
+                if_exists="append",
+                index=False,
+                method="multi",
+                chunksize=1000,
+            )

@@ -31,6 +31,7 @@ from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
 from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ignore
 from app.services.ind_end_dates_service import IndEndDatesService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
+from app.services.master_score_service import MasterScoreService
 
 @dataclass(frozen=True)
 class EuronextHourlyDataPipelineFlags:
@@ -82,7 +83,11 @@ class EuronextHourlyDataPipelineFlags:
     run_pivot_ind:bool = True
     run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
-
+    
+    #-------------------------------------
+    # indicator flags
+    #-------------------------------------
+    run_master_score: bool = True
 
 def _build_provider(name: str):
     name = name.lower().strip()
@@ -611,4 +616,28 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
         print('❌ [MASTERFILE] skipped!')
 
 
-    
+    #---------------------------------
+    # MASTER SCORE CALC
+    #---------------------------------
+    if flags.run_master_score:
+        print(f"[MASTER-SCORE] started: ({exchange})...")
+
+        svc = MasterScoreService(repo=repo)
+        run_ts = datetime.now()
+        svc.run(
+            exchange=exchange,
+            input_schema="gold",
+            input_table=f"ams_master_combined_indicators",
+            output_schema="gold",
+            output_table=f"ams_evaluation_master_score",
+            stop_loss_perc=3.0,
+            entry_markup_perc=0.5,
+            top_n=5,
+            created_at=run_ts,
+            send_telegram=True,
+            telegram_title=f"AMS TOP 10",
+
+        )
+
+    else:
+        print(f"❌ [MASTER-SCORE] AMS skipped!")

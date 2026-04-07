@@ -30,6 +30,7 @@ from app.services.ind_end_dates_service import IndEndDatesService
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
 from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
+from app.services.master_score_service import MasterScoreService
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,11 @@ class OandaHourlyDataPipelineFlags:
     run_pivot_ind:bool = True
     run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
+
+    #-------------------------------------
+    # indicator flags
+    #-------------------------------------
+    run_master_score: bool = True
 
 
 def _build_main_provider(name: str):
@@ -614,4 +620,30 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
         
         print(f"✅✅✅  [IND-MASTER] ASSETS DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
-        print('❌ [MASTERFILE] skipped!')
+        print('❌ [MASTERFILE] skipped!')  
+
+    #---------------------------------
+    # MASTER SCORE CALC
+    #---------------------------------
+    if flags.run_master_score:
+        print(f"[MASTER-SCORE] started: ASSETS...")
+
+        svc = MasterScoreService(repo=repo)
+        run_ts = datetime.now()
+        svc.run(
+            exchange=exchange,
+            input_schema="gold",
+            input_table=f"assets_master_combined_indicators",
+            output_schema="gold",
+            output_table=f"assets_evaluation_master_score",
+            stop_loss_perc=3.0,
+            entry_markup_perc=0.5,
+            top_n=5,
+            created_at=run_ts,
+            send_telegram=True,
+            telegram_title=f"CRYPTO TOP 10",
+
+        )
+
+    else:
+        print(f"❌ [MASTER-SCORE] ASSETS skipped!")
