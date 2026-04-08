@@ -69,7 +69,7 @@ def telegram_send_message(title: str, text: str):
         os.remove(temp_path)
 
         if response.status_code == 200:
-            print("✅ TELEGRAM MESSAGE SENT WITH SMALL LOGO!")
+            print("✅ 💬 TELEGRAM MESSAGE SENT!")
         else:
             print(f"❌ ERROR: {response.text}")
 

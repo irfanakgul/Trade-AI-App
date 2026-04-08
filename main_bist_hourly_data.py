@@ -41,7 +41,7 @@ async def main():
         run_mfi_ind = False,
         run_pivot_ind = False,
         run_source_end_dates_ind = False,
-        run_combined_indicators = True,
+        run_combined_indicators = False,
         run_master_score = True
     )
 
