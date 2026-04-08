@@ -68,10 +68,8 @@ class IndFrvPocProfileService:
         deleted = self.repo.delete_ind_frvp_scope(
             exchange=exchange,
             frvp_target_schema=frvp_target_schema,
-            frvp_target_table=frvp_target_table,
-            interval=self.cfg.interval,
-            periods=periods_sorted,
-        )
+            frvp_target_table=frvp_target_table)
+        
         print(f"[FRVP DEBUG] Deleted {deleted} old rows from {frvp_target_schema}.{frvp_target_table}")
 
         total = len(symbols)

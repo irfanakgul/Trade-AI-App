@@ -17,13 +17,13 @@ jobs:
 
   - name: ams_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "21:00"
+    at: "20:00"
     cmd: ".venv/bin/python -u main_ams_hourly_data.py"
     lock: "ams_hourly_lock"
 
   - name: nasdaq_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "23:45"
+    at: "23:30"
     cmd: ".venv/bin/python -u main_nasdaq_hourly_data.py"
     lock: "nasdaq_hourly_lock"
 
@@ -40,7 +40,7 @@ jobs:
 
   - name: crypto_hourly
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "23:59"
+    at: "23:57"
     cmd: ".venv/bin/python -u main_crypto_hourly_data.py"
     lock: "crypto_hourly_lock"
 

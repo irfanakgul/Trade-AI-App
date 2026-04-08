@@ -543,8 +543,6 @@ class PostgresRepository:
     def delete_ind_frvp_scope(
         self,
         exchange: str,
-        interval: str,
-        periods: List[str],
         frvp_target_schema: str = '',
         frvp_target_table: str = ''
         
@@ -553,11 +551,9 @@ class PostgresRepository:
         q = text(f"""
             DELETE FROM {frvp_target_schema}."{frvp_target_table}"
             WHERE "EXCHANGE" = :exchange
-              AND "INTERVAL" = :interval
-              AND "FRVP_PERIOD_TYPE" = ANY(:periods);
         """)
         with self.engine.begin() as conn:
-            res = conn.execute(q, {"exchange": exchange, "interval": interval, "periods": periods})
+            res = conn.execute(q, {"exchange": exchange})
             return int(res.rowcount or 0)
 
     def insert_ind_frvp_rows(

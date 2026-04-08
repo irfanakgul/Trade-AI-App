@@ -33,7 +33,7 @@ from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ig
 from app.services.ind_end_dates_service import IndEndDatesService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
-from app.services.master_score_service import MasterScoreService
+from app.services.master_score_service import MasterScoreService # type: ignore
 
 
 @dataclass(frozen=True)
