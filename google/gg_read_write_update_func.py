@@ -64,69 +64,74 @@ def _json_default_serializer(obj):
 
 
 def _to_google_cell(value):
-    if value is None:
+    import pandas as pd
+    import numpy as np
+    import math
+    import json
+    from datetime import datetime, date
+    from decimal import Decimal
+
+    # 🔥 CRITICAL: handle ALL null types first (NaT, NaN, None)
+    if pd.isna(value):
         return ""
 
-    if isinstance(value, pd.Timestamp):
-        if pd.isna(value):
-            return ""
-        return value.strftime("%Y-%m-%d %H:%M:%S")
-
-    if isinstance(value, datetime):
+    # -------------------------
+    # DATETIME TYPES
+    # -------------------------
+    if isinstance(value, (pd.Timestamp, datetime)):
         return value.strftime("%Y-%m-%d %H:%M:%S")
 
     if isinstance(value, date):
         return value.strftime("%Y-%m-%d")
 
-    if isinstance(value, Decimal):
-        return float(value)
-
-    if isinstance(value, np.integer):
+    # -------------------------
+    # NUMERIC TYPES
+    # -------------------------
+    if isinstance(value, (int, np.integer)):
         return int(value)
 
-    if isinstance(value, np.floating):
+    if isinstance(value, (float, np.floating)):
         value = float(value)
         if math.isnan(value) or math.isinf(value):
             return ""
         return value
 
-    if isinstance(value, float):
-        if math.isnan(value) or math.isinf(value):
-            return ""
-        return value
+    if isinstance(value, Decimal):
+        return float(value)
 
-    if isinstance(value, np.bool_):
+    # -------------------------
+    # BOOLEAN
+    # -------------------------
+    if isinstance(value, (bool, np.bool_)):
         return bool(value)
 
+    # -------------------------
+    # BYTES
+    # -------------------------
     if isinstance(value, bytes):
         try:
             return value.decode("utf-8")
         except Exception:
             return str(value)
 
-    try:
-        if pd.isna(value):
-            return ""
-    except Exception:
-        pass
-
+    # -------------------------
+    # COMPLEX STRUCTURES (JSON)
+    # -------------------------
     if isinstance(value, (dict, list, tuple, set)):
         try:
-            return json.dumps(
-                value,
-                ensure_ascii=False,
-                default=_json_default_serializer,
-            )
+            return json.dumps(value, ensure_ascii=False, default=str)
         except Exception:
             return str(value)
 
+    # -------------------------
+    # STRING
+    # -------------------------
     if isinstance(value, str):
         return value
 
-    if isinstance(value, (int, bool)):
-        return value
-
-    # object dtype içinde gelebilecek her şeyi güvenli stringe çevir
+    # -------------------------
+    # FALLBACK (object dtype safety)
+    # -------------------------
     try:
         json.dumps(value)
         return value

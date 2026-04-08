@@ -35,6 +35,12 @@ class IndVwapFocusService:
     ) -> None:
         exchange = exchange.upper().strip()
 
+        # 1) Scope symbols from cloned_focus_symbol_list
+        symbols = self.repo.get_cloned_focus_symbols(exchange=exchange)
+        if not symbols:
+            print(f"[VWAP] No cloned focus symbols found. exchange={exchange}")
+            return
+
         if is_truncate_scope:
             deleted = self.repo.delete_ind_vwap_scope(
                 schema=target_schema,
@@ -43,6 +49,7 @@ class IndVwapFocusService:
             )
             print(f"[VWAP] Cleared output scope: exchange={exchange} deleted_rows={deleted}")
 
+        # 2) Fetch source data
         rows = self.repo.fetch_vwap_source_data(
             source_schema=source_schema,
             source_table=source_table,
@@ -55,6 +62,14 @@ class IndVwapFocusService:
 
         try:
             df = pd.DataFrame(rows)
+
+            # 3) Keep only cloned focus symbols
+            df = df[df["SYMBOL"].isin(symbols)].copy()
+
+            if df.empty:
+                print(f"[VWAP] Source data exists but no rows matched cloned focus symbols. exchange={exchange}")
+                return
+
             summary_df = build_anchored_vwap_summary(df=df, periods=periods)
 
             if summary_df.empty:
@@ -91,8 +106,8 @@ class IndVwapFocusService:
             )
 
             print(
-                f"[VWAP] exchange={exchange} periods={len(periods)} "
-                f"symbols={summary_df['SYMBOL'].nunique()} rows={len(summary_df)} inserted={inserted}"
+                f"[VWAP] exchange={exchange} cloned_symbols={len(symbols)} "
+                f"computed_symbols={summary_df['SYMBOL'].nunique()} rows={len(summary_df)} inserted={inserted}"
             )
 
         except Exception as e:

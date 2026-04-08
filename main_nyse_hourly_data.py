@@ -19,11 +19,14 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = NyseHourlyDataPipelineFlags(
+
+        #=================================================================#
+        # DATA INGESTION
+        #=================================================================#
         ingest=True,
-        
         sync_archive_to_working = True,
         trim_history = True,
-        build_focus_dataset=True,
+        build_focus_dataset= True,
         run_dq = True,
 
         #=================================================================#
@@ -38,7 +41,10 @@ async def main():
         run_rsi_ind = True,
         run_mfi_ind = True,
         run_pivot_ind = True,
+        run_source_end_dates_ind = True,
         run_combined_indicators = True,
+        run_master_score = True
+
     )
 
     await run_nyse_hourly_data_pipeline(repo, flags,'NYSE')
@@ -52,7 +58,7 @@ if __name__ == "__main__":
                 title="PIPELINE run",
                 text="✅ NYSE pipeline has been completed succesfuly")
     except Exception as e:
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
             telegram_send_message(
                 title="PIPELINE ERROR!",
                 text=f"❌ NYSE pipeline stopt with error!\nERROR: {e}")

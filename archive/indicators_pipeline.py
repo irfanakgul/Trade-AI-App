@@ -162,7 +162,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
         )
         svc.run(
             exchange=exchange,
-            periods=["2year", "1year", "6months", "4months"],
+            periods=["2year", "1year", "6months", "3months"],
             cutt_off_date=flags.cutt_off_date,
             is_truncate_scope=flags.truncate_scope,
         )
@@ -207,7 +207,7 @@ def run_indicators_for_exchange(repo: PostgresRepository, exchange: str, flags: 
             flush=True
         )
 
-        stats = repo.build_converted_daily_for_ema_rsi_scope(
+        stats = repo.build_converted_daily_for_indicators(
             exchange=exchange,
             interval=flags.converted_daily_input_interval,  # "1min" or "daily"
             start_trading_days_back=flags.converted_daily_start_trading_days_back,

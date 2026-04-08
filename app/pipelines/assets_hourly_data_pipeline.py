@@ -30,6 +30,7 @@ from app.services.ind_end_dates_service import IndEndDatesService
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
 from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
+from app.services.master_score_service import MasterScoreService
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,11 @@ class OandaHourlyDataPipelineFlags:
     run_pivot_ind:bool = True
     run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
+
+    #-------------------------------------
+    # indicator flags
+    #-------------------------------------
+    run_master_score: bool = True
 
 
 def _build_main_provider(name: str):
@@ -225,7 +231,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             ts_col="TS",
             high_col="HIGH",
             exchange=exchange,
-            min_trading_days=15,
+            min_trading_days=20,
         )
 
         #adding elemination reason
@@ -233,7 +239,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             exchange=exchange,
             compare_schema = 'silver',
             compare_table='indicators_assets_focus_dataset',
-            reason='Highest HIGH Value falled in last 15 days',
+            reason='Highest HIGH Value falled in last 20 days',
             main_symbol_schema = 'prod',
             main_symbol_table = 'FOCUS_SYMBOLS_ALL',
             drop_and_recreate = False
@@ -331,16 +337,16 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
         print(f"[DQ] ASSETS completed. DQ_RUN_ID={dq_run_id}")
 
         # failed dq symbols will be out of scope
-        if flags.dq_elemination:
-            repo.update_focus_symbol_scope(
-                exchange=exchange,
-                compare_schema='logs',
-                compare_table='dq_check_overview_assets',
-                reason='DQ FAILED',
-                main_symbol_schema = 'prod',
-                main_symbol_table = 'FOCUS_SYMBOLS_ALL',
-                drop_and_recreate = False
-            )
+        # if flags.dq_elemination:
+        #     repo.update_focus_symbol_scope(
+        #         exchange=exchange,
+        #         compare_schema='logs',
+        #         compare_table='dq_check_overview_assets',
+        #         reason='DQ FAILED',
+        #         main_symbol_schema = 'prod',
+        #         main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+        #         drop_and_recreate = False
+        #     )
 
         
         # write to gg
@@ -375,18 +381,18 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             bs_target_table='IND_BAR_STATUS',
             is_truncate_scope=True,
         )
-        # adding elemination reason
-        repo.update_focus_symbol_scope_filtered(
-            exchange=exchange,
-            compare_schema = 'silver',
-            compare_table='IND_BAR_STATUS',
-            comp_col='BAR_STATUS',
-            comp_value='GREEN', # green olmayanlari scope disi birakacak!
-            reason='bar status red | close is lower than open',
-            main_symbol_schema = 'prod',
-            main_symbol_table = 'FOCUS_SYMBOLS_ALL',
-            drop_and_recreate = False
-        )
+        # # adding elemination reason
+        # repo.update_focus_symbol_scope_filtered(
+        #     exchange=exchange,
+        #     compare_schema = 'silver',
+        #     compare_table='IND_BAR_STATUS',
+        #     comp_col='BAR_STATUS',
+        #     comp_value='GREEN', # green olmayanlari scope disi birakacak!
+        #     reason='bar status red | close is lower than open',
+        #     main_symbol_schema = 'prod',
+        #     main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+        #     drop_and_recreate = False
+        # )
     else:
         print(f"❌ [IND-BAR_STATUS] assets skipped for exchange={exchange}")
     
@@ -400,7 +406,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
         svc = IndFrvPocProfileService(repo=repo)
         svc.run(
             exchange=exchange,
-            periods=["2year", "1year", "6months", "4months"],
+            periods=["2year", "1year", "6months", "3months"],
             frvp_source_schema='silver',
             frvp_source_table='indicators_assets_focus_dataset',
             frvp_target_schema='silver',
@@ -408,18 +414,18 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             cutt_off_date=None
             )
         
-        #adding elemination reason
-        repo.update_focus_symbol_scope_filtered(
-            exchange=exchange,
-            compare_schema = 'silver',
-            compare_table='IND_FRV_POC_PROFILE',
-            comp_col="IN_SCOPE_FOR_EMA_RSI",
-            comp_value='True', # true olmayanlar scope disi kalacak demek unutma!
-            reason='4 poc values are lower than latest close price',
-            main_symbol_schema = 'prod',
-            main_symbol_table = 'FOCUS_SYMBOLS_ALL',
-            drop_and_recreate = False
-        )
+        # #adding elemination reason
+        # repo.update_focus_symbol_scope_filtered(
+        #     exchange=exchange,
+        #     compare_schema = 'silver',
+        #     compare_table='IND_FRV_POC_PROFILE',
+        #     comp_col="IN_SCOPE_FOR_EMA_RSI",
+        #     comp_value='True', # true olmayanlar scope disi kalacak demek unutma!
+        #     reason='4 poc values are lower than latest close price',
+        #     main_symbol_schema = 'prod',
+        #     main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+        #     drop_and_recreate = False
+        # )
     else:
         print(f"❌ [IND-FRVP] assets skipped for exchange={exchange}")
 
@@ -429,7 +435,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
     if flags.run_convert_daily:
         print(f"[IND-CONVERT_DAILY] assets started ({exchange})...")
 
-        stats = repo.build_converted_daily_for_ema_rsi_scope(
+        stats = repo.build_converted_daily_for_indicators(
             exchange=exchange,
             interval='hourly',  
             start_trading_days_back=365,
@@ -481,7 +487,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             source_table=flags.target_table,
             target_schema='silver',
             target_table='IND_VWAP_FOCUS',
-            periods=["2year", "1year", "6months", "4months"],
+            periods=["2year", "1year", "6months", "3months"],
             is_truncate_scope=True,
         )
     else:
@@ -614,4 +620,30 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
         
         print(f"✅✅✅  [IND-MASTER] ASSETS DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
-        print('❌ [MASTERFILE] skipped!')
+        print('❌ [MASTERFILE] skipped!')  
+
+    #---------------------------------
+    # MASTER SCORE CALC
+    #---------------------------------
+    if flags.run_master_score:
+        print(f"[MASTER-SCORE] started: ASSETS...")
+
+        svc = MasterScoreService(repo=repo)
+        run_ts = datetime.now()
+        svc.run(
+            exchange=exchange,
+            input_schema="gold",
+            input_table=f"assets_master_combined_indicators",
+            output_schema="gold",
+            output_table=f"assets_evaluation_master_score",
+            stop_loss_perc=3.0,
+            entry_markup_perc=0.5,
+            top_n=10,
+            created_at=run_ts,
+            send_telegram=True,
+            telegram_title=f"CRYPTO TOP 10",
+
+        )
+
+    else:
+        print(f"❌ [MASTER-SCORE] ASSETS skipped!")

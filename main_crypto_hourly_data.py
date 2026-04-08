@@ -22,11 +22,7 @@ async def main():
         #=================================================================#
         # DATA INGESTION
         #=================================================================#
-
-        #data pull
         ingest=True,
-
-        # prep
         sync_archive_to_working = True,
         trim_history = True,
         build_focus_dataset= True,
@@ -45,7 +41,9 @@ async def main():
         run_mfi_ind = True,
         run_pivot_ind = True,
         run_source_end_dates_ind = True,
-        run_combined_indicators = True
+        run_combined_indicators = True,
+        run_master_score = True
+
 
     )
 
