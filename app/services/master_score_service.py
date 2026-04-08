@@ -11,6 +11,10 @@ from app.infrastructure.database.repository import PostgresRepository
 from app.services.telegram_bot_chat_service import telegram_send_message  # type: ignore
 
 
+# ============================================================
+# CONFIG
+# ============================================================
+
 @dataclass
 class MasterScoreWeights:
     poc_frvp: float = 0.65
@@ -26,6 +30,7 @@ class MasterScoreThresholds:
     buy_min: float = 70.0
     watch_min: float = 50.0
     poc_cluster_max_spread: float = 0.03
+    triage_bonus_max_spread: float = 0.02
     vwap_near_threshold: float = 0.05
     vwap_far_threshold: float = 0.10
     poc_close_distance_limit: float = 0.20
@@ -52,7 +57,6 @@ class TelegramConfig:
 class LogConfig:
     schema: str = "logs"
     table: str = "log_all_evaluation"
-    append_only: bool = True
 
 
 @dataclass
@@ -70,6 +74,10 @@ class MasterScoreServiceConfig:
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     log: LogConfig = field(default_factory=LogConfig)
 
+
+# ============================================================
+# SERVICE
+# ============================================================
 
 class MasterScoreService:
     def __init__(
@@ -95,6 +103,7 @@ class MasterScoreService:
         buy_min: Optional[float] = None,
         watch_min: Optional[float] = None,
         poc_cluster_max_spread: Optional[float] = None,
+        triage_bonus_max_spread: Optional[float] = None,
         vwap_near_threshold: Optional[float] = None,
         vwap_far_threshold: Optional[float] = None,
         poc_close_distance_limit: Optional[float] = None,
@@ -127,6 +136,7 @@ class MasterScoreService:
             buy_min=buy_min,
             watch_min=watch_min,
             poc_cluster_max_spread=poc_cluster_max_spread,
+            triage_bonus_max_spread=triage_bonus_max_spread,
             vwap_near_threshold=vwap_near_threshold,
             vwap_far_threshold=vwap_far_threshold,
             poc_close_distance_limit=poc_close_distance_limit,
@@ -215,6 +225,7 @@ class MasterScoreService:
             "buy_min": kwargs["buy_min"] if kwargs["buy_min"] is not None else t.buy_min,
             "watch_min": kwargs["watch_min"] if kwargs["watch_min"] is not None else t.watch_min,
             "poc_cluster_max_spread": kwargs["poc_cluster_max_spread"] if kwargs["poc_cluster_max_spread"] is not None else t.poc_cluster_max_spread,
+            "triage_bonus_max_spread": kwargs["triage_bonus_max_spread"] if kwargs["triage_bonus_max_spread"] is not None else t.triage_bonus_max_spread,
             "vwap_near_threshold": kwargs["vwap_near_threshold"] if kwargs["vwap_near_threshold"] is not None else t.vwap_near_threshold,
             "vwap_far_threshold": kwargs["vwap_far_threshold"] if kwargs["vwap_far_threshold"] is not None else t.vwap_far_threshold,
             "poc_close_distance_limit": kwargs["poc_close_distance_limit"] if kwargs["poc_close_distance_limit"] is not None else t.poc_close_distance_limit,
@@ -237,20 +248,27 @@ class MasterScoreService:
             "log_table": kwargs["log_table"] if kwargs["log_table"] is not None else lg.table,
         }
 
+    # ============================================================
+    # EXACT HELPERS
+    # ============================================================
+
     @staticmethod
     def _to_float(col: pd.Series) -> pd.Series:
         return (
             col.astype(str)
             .str.replace(".", "", regex=False)
             .str.replace(",", ".", regex=False)
-            .replace({"nan": np.nan, "None": np.nan, "NaN": np.nan, "": np.nan})
             .astype(float)
         )
 
     def _prepare_numeric_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Keep preprocessing minimal so scoring behaves like the reference code.
+        Only columns that are clearly numeric in calculations are normalized here.
+        """
         df = df.copy()
 
-        direct_numeric_cols = [
+        numeric_cols = [
             "FRVP_LATEST_CLOSE_VALUE",
             "FRVP_POC",
             "FRVP_VAL",
@@ -265,27 +283,29 @@ class MasterScoreService:
             "MFI_12DAY_AVG",
             "RSI_MA",
             "RSI_CROSS_DAYS_AGO",
-            "EMA_DAYS_SINCE_CROSS_5_20",
-            "EMA_DAYS_SINCE_CROSS_3_20",
-            "EMA_DAYS_SINCE_CROSS_3_14",
             "RSI_STATUS",
             "EMA_STATUS_5_20",
             "EMA_CROSS_5_20",
+            "EMA_DAYS_SINCE_CROSS_5_20",
             "EMA_STATUS_3_20",
             "EMA_CROSS_3_20",
+            "EMA_DAYS_SINCE_CROSS_3_20",
             "EMA_STATUS_3_14",
             "EMA_CROSS_3_14",
+            "EMA_DAYS_SINCE_CROSS_3_14",
         ]
 
-        for col in direct_numeric_cols:
+        for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
 
         return df
 
-    def _calc_poc_cluster_score(self, df: pd.DataFrame, params: Dict) -> pd.Series:
-        max_spread = params["poc_cluster_max_spread"]
+    # ============================================================
+    # EXACT REFERENCE FUNCTIONS
+    # ============================================================
 
+    def _calc_poc_cluster_score(self, df: pd.DataFrame, params: Dict) -> pd.Series:
         def cluster(group: pd.DataFrame):
             n = group["FRVP_HIGHEST_DATE"].nunique()
             vals = group["FRVP_POC"].values
@@ -298,16 +318,16 @@ class MasterScoreService:
             if n >= 3:
                 if spread == 0:
                     return 10
-                elif spread <= max_spread:
-                    return 3 + (1 - spread / max_spread) * 7
+                elif spread <= params["poc_cluster_max_spread"]:
+                    return 3 + (1 - spread / params["poc_cluster_max_spread"]) * 7
                 else:
                     return 3
 
             if n == 2:
                 if spread == 0:
                     return 7
-                elif spread <= max_spread:
-                    return 3 + (1 - spread / max_spread) * 4
+                elif spread <= params["poc_cluster_max_spread"]:
+                    return 3 + (1 - spread / params["poc_cluster_max_spread"]) * 4
                 else:
                     return 3
 
@@ -320,8 +340,8 @@ class MasterScoreService:
             .reset_index()
         )
 
-        merged = df.merge(cluster_scores, on=["EXCHANGE", "SYMBOL"], how="left")
-        return merged["cluster_score"]
+        df2 = df.merge(cluster_scores, on=["EXCHANGE", "SYMBOL"], how="left")
+        return df2["cluster_score"]
 
     def _calc_mfi_new(self, df: pd.DataFrame) -> np.ndarray:
         return (
@@ -383,18 +403,18 @@ class MasterScoreService:
 
         dist = np.abs(close - vwap) / vwap
 
-        near_threshold = params["vwap_near_threshold"]
-        far_threshold = params["vwap_far_threshold"]
-
         return np.clip(
             np.where(
-                dist <= near_threshold, 0,
+                dist <= params["vwap_near_threshold"],
+                0,
                 np.where(
-                    dist >= far_threshold, 100,
-                    ((dist - near_threshold) / (far_threshold - near_threshold)) * 100
+                    dist >= params["vwap_far_threshold"],
+                    100,
+                    ((dist - params["vwap_near_threshold"]) / (params["vwap_far_threshold"] - params["vwap_near_threshold"])) * 100
                 )
             ),
-            0, 100
+            0,
+            100
         )
 
     def _calc_poc_frvp_new(self, df: pd.DataFrame, params: Dict) -> np.ndarray:
@@ -405,7 +425,8 @@ class MasterScoreService:
 
         score1 = np.clip(
             (1 - ((close - poc) / poc) / params["poc_close_distance_limit"]) * 5,
-            0, 5
+            0,
+            5
         )
 
         score2 = self._calc_poc_cluster_score(df, params)
@@ -421,18 +442,18 @@ class MasterScoreService:
 
         score5 = np.clip(
             (1 - np.abs(poc - val) / val / params["poc_val_distance_limit"]) * 5,
-            0, 5
+            0,
+            5
         )
 
         dist_vah = np.abs(poc - vah) / vah
         score6 = np.where(
-            dist_vah >= params["poc_vah_far_threshold"], 5,
+            dist_vah >= params["poc_vah_far_threshold"],
+            5,
             np.where(
-                dist_vah <= params["poc_vah_near_threshold"], 0,
-                (
-                    (dist_vah - params["poc_vah_near_threshold"])
-                    / (params["poc_vah_far_threshold"] - params["poc_vah_near_threshold"])
-                ) * 5
+                dist_vah <= params["poc_vah_near_threshold"],
+                0,
+                ((dist_vah - params["poc_vah_near_threshold"]) / (params["poc_vah_far_threshold"] - params["poc_vah_near_threshold"])) * 5
             )
         )
 
@@ -448,8 +469,6 @@ class MasterScoreService:
 
         pivot = df["PIVOT"] if "PIVOT" in df.columns else pd.Series(np.nan, index=df.index)
         r2 = df["R2"] if "R2" in df.columns else pd.Series(np.nan, index=df.index)
-
-        df["stop_loss"] = df["entry_price"] * (1 - (params["stop_loss_perc"] / 100.0))
 
         def choose_target(row):
             c = row["FRVP_LATEST_CLOSE_VALUE"]
@@ -470,9 +489,13 @@ class MasterScoreService:
         df["target_price"] = df.apply(choose_target, axis=1)
         df["target_pct"] = ((df["target_price"] - df["entry_price"]) / df["entry_price"]) * 100
         df["risk_pct"] = ((df["entry_price"] - df["stop_loss"]) / df["entry_price"]) * 100
-        df["rr_ratio"] = np.where(df["risk_pct"] != 0, df["target_pct"] / df["risk_pct"], 0)
+        df["rr_ratio"] = df["target_pct"] / df["risk_pct"]
 
-        df["pivot_display"] = np.where(pivot.isna(), "N/A", pivot)
+        df["pivot_display"] = np.where(
+            pivot.isna(),
+            "N/A",
+            pivot
+        )
 
         return df
 
@@ -501,6 +524,9 @@ class MasterScoreService:
             df["master_score"] >= params["buy_min"], "BUY",
             np.where(df["master_score"] >= params["watch_min"], "WATCH", "AVOID")
         )
+
+        df["entry_price"] = df["FRVP_LATEST_CLOSE_VALUE"] * (1 + (params["entry_markup_perc"] / 100.0))
+        df["stop_loss"] = df["entry_price"] * (1 - (params["stop_loss_perc"] / 100.0))
 
         df = self._calculate_trade_levels(df, params)
 
@@ -533,7 +559,7 @@ class MasterScoreService:
             else:
                 spread = 999
 
-            if spread <= 0.02:
+            if spread <= params["triage_bonus_max_spread"]:
                 if count >= 4:
                     final_score = avg_score * 1.20
                 elif count == 3:
@@ -564,7 +590,7 @@ class MasterScoreService:
             triage_day = pd.to_datetime(
                 g["CREATED_DAY"].iloc[0],
                 dayfirst=True
-            ).strftime("%Y-%m-%d") if "CREATED_DAY" in g.columns else created_at.strftime("%Y-%m-%d")
+            ).strftime("%Y-%m-%d")
 
             results.append({
                 "EXCHANGE": exchange,
@@ -586,6 +612,10 @@ class MasterScoreService:
         result_df = result_df.sort_values("MASTER_SCORE", ascending=False)
 
         return result_df.head(params["top_n"])
+
+    # ============================================================
+    # OUTPUT / LOG / TELEGRAM
+    # ============================================================
 
     def _format_output_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
@@ -642,6 +672,7 @@ class MasterScoreService:
 
         existing = [c for c in ordered_cols if c in log_df.columns]
         remaining = [c for c in log_df.columns if c not in existing]
+
         return log_df[existing + remaining]
 
     def _build_telegram_text(self, df: pd.DataFrame, exchange: str) -> str:
@@ -655,9 +686,11 @@ class MasterScoreService:
             target_pct_num = str(row.TARGET_PERC).replace("%", "")
 
             lines.append(
-                f"{idx}) {row.SYMBOL} | "
+                f"{idx}) {row.EXCHANGE}:{row.SYMBOL} | "
                 f"MasterScore: {row.MASTER_SCORE} | "
-                f"StopLoss: {row.STOP_LOSS} "
+                f"StopLoss: {row.STOP_LOSS} | "
+                f"Target%: {target_pct_num} | "
+                f"Stop%: {stop_pct_num}"
             )
 
         return "\n".join(lines)
