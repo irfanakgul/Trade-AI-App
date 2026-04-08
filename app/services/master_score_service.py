@@ -688,9 +688,6 @@ class MasterScoreService:
             lines.append(
                 f"{idx}) {row.EXCHANGE}:{row.SYMBOL} | "
                 f"MasterScore: {row.MASTER_SCORE} | "
-                f"StopLoss: {row.STOP_LOSS} | "
-                f"Target%: {target_pct_num} | "
-                f"Stop%: {stop_pct_num}"
-            )
+                f"StopLoss: {row.STOP_LOSS} | ")
 
         return "\n".join(lines)
