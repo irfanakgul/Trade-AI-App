@@ -3184,3 +3184,84 @@ class PostgresRepository:
                 method="multi",
                 chunksize=1000,
             )
+
+    # ===========================================
+    # RT WATCH
+    # ===========================================
+
+    def get_symbols_from_table(
+        self,
+        source_schema: str,
+        source_table: str,
+        exchange: str,
+        symbol_col: str = "SYMBOL",
+        exchange_col: str = "EXCHANGE",
+        where_sql: str | None = None,
+    ) -> List[str]:
+        query = f'''
+            SELECT DISTINCT "{symbol_col}"
+            FROM {source_schema}."{source_table}"
+            WHERE "{exchange_col}" = :exchange
+        '''
+        if where_sql:
+            query += f"\n  AND ({where_sql})"
+
+        query += f'\nORDER BY "{symbol_col}";'
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(text(query), {"exchange": exchange}).fetchall()
+
+        return [r[0] for r in rows if r[0]]
+
+    def truncate_table(
+        self,
+        schema_name: str,
+        table_name: str,
+    ) -> None:
+        q = text(f'TRUNCATE TABLE {schema_name}."{table_name}";')
+        with self.engine.begin() as conn:
+            conn.execute(q)
+
+    def bulk_insert_watch_dataset(
+        self,
+        rows: List[Dict[str, Any]],
+        target_schema: str,
+        target_table: str,
+    ) -> int:
+        if not rows:
+            return 0
+
+        q = text(f'''
+        INSERT INTO {target_schema}."{target_table}" (
+            "EXCHANGE",
+            "SYMBOL",
+            "TIMESTAMP",
+            "OPEN",
+            "HIGH",
+            "LOW",
+            "CLOSE",
+            "VOLUME",
+            "ROW_ID",
+            "SOURCE",
+            "CREATED_AT"
+        )
+        VALUES (
+            :EXCHANGE,
+            :SYMBOL,
+            :TIMESTAMP,
+            :OPEN,
+            :HIGH,
+            :LOW,
+            :CLOSE,
+            :VOLUME,
+            :ROW_ID,
+            :SOURCE,
+            :CREATED_AT
+        )
+        ON CONFLICT ("ROW_ID") DO NOTHING;
+    ''')
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)
