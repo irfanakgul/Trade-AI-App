@@ -638,7 +638,7 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
             output_table=f"assets_evaluation_master_score",
             stop_loss_perc=3.0,
             entry_markup_perc=0.5,
-            top_n=5,
+            top_n=10,
             created_at=run_ts,
             send_telegram=True,
             telegram_title=f"CRYPTO TOP 10",

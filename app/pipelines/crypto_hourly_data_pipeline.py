@@ -637,7 +637,7 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             output_table=f"crypto_evaluation_master_score",
             stop_loss_perc=3.0,
             entry_markup_perc=0.5,
-            top_n=5,
+            top_n=10,
             created_at=run_ts,
             send_telegram=True,
             telegram_title=f"{exchange} TOP 10",
