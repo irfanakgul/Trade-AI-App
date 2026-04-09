@@ -32,10 +32,10 @@ async def main():
         flags=flags,
         exchange="NASDAQ",
         exc_name="nasdaq",
-        calc_1_open_hour=9,
-        calc_1_open_minute=0,
-        calc_1_close_hour=10,
-        calc_1_close_minute=45,
+        signal_open_hour=9,
+        signal_open_minute=0,
+        signal_close_hour=10,
+        signal_close_minute=45,
     )
 
 

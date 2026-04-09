@@ -29,10 +29,10 @@ async def run_watch_pipeline(
     flags: WatchPipelineFlags,
     exchange: str,
     exc_name: str,
-    calc_1_open_hour: int,
-    calc_1_open_minute: int,
-    calc_1_close_hour: int,
-    calc_1_close_minute: int,
+    signal_open_hour: int,
+    signal_open_minute: int,
+    signal_close_hour: int,
+    signal_close_minute: int,
 ):
     exchange = exchange.upper().strip()
     exc_name = exc_name.lower().strip()
@@ -96,10 +96,10 @@ async def run_watch_pipeline(
             output_table=f"watch_signal_check_{exc_name}",
             log_schema="logs",
             log_table="watch_signal_check_all",
-            open_hour=calc_1_open_hour,
-            open_minute=calc_1_open_minute,
-            close_hour=calc_1_close_hour,
-            close_minute=calc_1_close_minute,
+            open_hour=signal_open_hour,
+            open_minute=signal_open_minute,
+            close_hour=signal_close_hour,
+            close_minute=signal_close_minute,
             is_truncate_output=True,
         )
 

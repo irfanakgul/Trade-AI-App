@@ -34,7 +34,7 @@ from app.services.ind_end_dates_service import IndEndDatesService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
 from app.services.master_score_service import MasterScoreService # type: ignore
-
+from app.services.watch_signal_realised_close_service import WatchSignalRealisedCloseService
 
 @dataclass(frozen=True)
 class BistHourlyDataPipelineFlags:
@@ -86,6 +86,7 @@ class BistHourlyDataPipelineFlags:
     run_pivot_ind:bool = True
     run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
+    run_watch_realised_close:bool = True
 
     #-------------------------------------
     # indicator flags
@@ -645,3 +646,23 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
 
     else:
         print(f"❌ [MASTER-SCORE] {exchange} skipped!")
+
+    #---------------------------------
+    # WATCH SIGNAL REALISED CLOSE UPDATE
+    #---------------------------------
+    if flags.run_watch_realised_close:
+        print(f"[WATCH-REALISED] started ({exchange})...")
+
+        svc = WatchSignalRealisedCloseService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema="raw",
+            source_table="bist_hourly_archive",
+            target_schema="prod",
+            target_table="watch_signal_check_bist",
+            log_schema="logs",
+            log_table="watch_signal_check_all",
+        )
+
+    else:
+        print("❌ [WATCH-REALISED] skipped!")

@@ -33,10 +33,10 @@ async def main():
         flags=flags,
         exchange="BINANCE",
         exc_name="crypto",
-        calc_1_open_hour=9,
-        calc_1_open_minute=0,
-        calc_1_close_hour=10,
-        calc_1_close_minute=45,
+        signal_open_hour=9,
+        signal_open_minute=0,
+        signal_close_hour=10,
+        signal_close_minute=45,
     )
 
 

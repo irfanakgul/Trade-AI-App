@@ -42,7 +42,8 @@ async def main():
         run_pivot_ind = True,
         run_source_end_dates_ind = True,
         run_combined_indicators = True,
-        run_master_score = True
+        run_master_score = True,
+        run_watch_realised_close = True
     )
 
     await run_bist_hourly_data_pipeline(repo, flags,'BIST')

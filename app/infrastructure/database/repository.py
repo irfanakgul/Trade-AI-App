@@ -3390,23 +3390,29 @@ class PostgresRepository:
             ).fetchall()
 
         return [
-            {
-                "EXCHANGE": r[0],
-                "SYMBOL": r[1],
-                "DATE": r[2],
-                "OPEN_TIMESTAMP": r[3],
-                "CLOSE_TIMESTAMP": r[4],
-                "REQUESTED_OPEN_TIME": r[5],
-                "REQUESTED_CLOSE_TIME": r[6],
-                "OPEN": float(r[7]) if r[7] is not None else None,
-                "CLOSE": float(r[8]) if r[8] is not None else None,
-                "DIFF_O_C": float(r[9]) if r[9] is not None else None,
-                "DAILY_VOLUME": float(r[10]) if r[10] is not None else None,
-                "STATUS": r[11],
-                "CREATED_AT": r[12],
-            }
-            for r in rows
-        ]
+        {
+            "EXCHANGE": r[0],
+            "SYMBOL": r[1],
+            "DATE": r[2],
+            "OPEN_TIMESTAMP": r[3],
+            "CLOSE_TIMESTAMP": r[4],
+            "REQUESTED_OPEN_TIME": r[5],
+            "REQUESTED_CLOSE_TIME": r[6],
+            "OPEN": float(r[7]) if r[7] is not None else None,
+            "CLOSE": float(r[8]) if r[8] is not None else None,
+            "DIFF_O_C": float(r[9]) if r[9] is not None else None,
+            "DAILY_VOLUME": float(r[10]) if r[10] is not None else None,
+            "STATUS": r[11],
+
+            # 🔴 YENİLER → ŞU AN NULL
+            "REALISED_CLOSE_TIMESTAMP": None,
+            "REALISED_CLOSE_PRICE": None,
+            "REALISED_PROFIT": None,
+
+            "CREATED_AT": r[12],
+        }
+        for r in rows
+    ]
     
     def insert_watch_signal_check_rows(
         self,
@@ -3418,38 +3424,134 @@ class PostgresRepository:
             return 0
 
         q = text(f"""
-            INSERT INTO {schema}."{table}" (
-                "EXCHANGE",
-                "SYMBOL",
-                "DATE",
-                "OPEN_TIMESTAMP",
-                "CLOSE_TIMESTAMP",
-                "REQUESTED_OPEN_TIME",
-                "REQUESTED_CLOSE_TIME",
-                "OPEN",
-                "CLOSE",
-                "DIFF_O_C",
-                "DAILY_VOLUME",
-                "STATUS",
-                "CREATED_AT"
-            )
-            VALUES (
-                :EXCHANGE,
-                :SYMBOL,
-                :DATE,
-                :OPEN_TIMESTAMP,
-                :CLOSE_TIMESTAMP,
-                :REQUESTED_OPEN_TIME,
-                :REQUESTED_CLOSE_TIME,
-                :OPEN,
-                :CLOSE,
-                :DIFF_O_C,
-                :DAILY_VOLUME,
-                :STATUS,
-                :CREATED_AT
-            );
-        """)
+        INSERT INTO {schema}."{table}" (
+            "EXCHANGE",
+            "SYMBOL",
+            "DATE",
+            "OPEN_TIMESTAMP",
+            "CLOSE_TIMESTAMP",
+            "REQUESTED_OPEN_TIME",
+            "REQUESTED_CLOSE_TIME",
+            "OPEN",
+            "CLOSE",
+            "DIFF_O_C",
+            "DAILY_VOLUME",
+            "STATUS",
+
+            "REALISED_CLOSE_TIMESTAMP",
+            "REALISED_CLOSE_PRICE",
+            "REALISED_PROFIT",
+
+            "CREATED_AT"
+        )
+        VALUES (
+            :EXCHANGE,
+            :SYMBOL,
+            :DATE,
+            :OPEN_TIMESTAMP,
+            :CLOSE_TIMESTAMP,
+            :REQUESTED_OPEN_TIME,
+            :REQUESTED_CLOSE_TIME,
+            :OPEN,
+            :CLOSE,
+            :DIFF_O_C,
+            :DAILY_VOLUME,
+            :STATUS,
+
+            :REALISED_CLOSE_TIMESTAMP,
+            :REALISED_CLOSE_PRICE,
+            :REALISED_PROFIT,
+
+            :CREATED_AT
+        );
+    """)
 
         with self.engine.begin() as conn:
             conn.execute(q, rows)
         return len(rows)
+    
+
+    # update realised profic
+    def update_realised_close_fields_from_hourly_source(
+        self,
+        source_schema: str,
+        source_table: str,
+        target_schema: str,
+        target_table: str,
+        exchange: str | None = None,
+    ) -> int:
+        """
+        target table içindeki realised alanları NULL olan satırlar için,
+        source hourly table'dan aynı günün son TS ve CLOSE değerini bulur
+        ve target tabloyu update eder.
+
+        DATE formatı target tabloda: DD-MM-YYYY
+        TS formatı source tabloda: timestamp
+        """
+
+        filter_sql = ""
+        params = {}
+
+        if exchange is not None:
+            filter_sql = ' AND t."EXCHANGE" = :exchange'
+            params["exchange"] = exchange
+
+        sql = text(f"""
+            WITH pending AS (
+                SELECT
+                    t."EXCHANGE",
+                    t."SYMBOL",
+                    t."DATE",
+                    t."CLOSE" AS signal_close
+                FROM {target_schema}."{target_table}" t
+                WHERE t."REALISED_CLOSE_TIMESTAMP" IS NULL
+                AND t."REALISED_CLOSE_PRICE" IS NULL
+                AND t."REALISED_PROFIT" IS NULL
+                {filter_sql}
+            ),
+            matched AS (
+                SELECT
+                    p."EXCHANGE",
+                    p."SYMBOL",
+                    p."DATE",
+                    p.signal_close,
+                    s."TS" AS realised_close_timestamp,
+                    s."CLOSE" AS realised_close_price,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p."EXCHANGE", p."SYMBOL", p."DATE"
+                        ORDER BY s."TS" DESC
+                    ) AS rn
+                FROM pending p
+                JOIN {source_schema}."{source_table}" s
+                ON s."EXCHANGE" = p."EXCHANGE"
+                AND s."SYMBOL" = p."SYMBOL"
+                AND s."TS"::date = TO_DATE(p."DATE", 'DD-MM-YYYY')
+            ),
+            final_match AS (
+                SELECT
+                    "EXCHANGE",
+                    "SYMBOL",
+                    "DATE",
+                    realised_close_timestamp,
+                    realised_close_price,
+                    CASE
+                        WHEN signal_close IS NULL OR signal_close = 0 THEN NULL
+                        ELSE ROUND((((realised_close_price - signal_close) / signal_close) * 100.0)::numeric, 4)
+                    END AS realised_profit
+                FROM matched
+                WHERE rn = 1
+            )
+            UPDATE {target_schema}."{target_table}" t
+            SET
+                "REALISED_CLOSE_TIMESTAMP" = fm.realised_close_timestamp,
+                "REALISED_CLOSE_PRICE" = fm.realised_close_price,
+                "REALISED_PROFIT" = fm.realised_profit
+            FROM final_match fm
+            WHERE t."EXCHANGE" = fm."EXCHANGE"
+            AND t."SYMBOL" = fm."SYMBOL"
+            AND t."DATE" = fm."DATE"
+        """)
+
+        with self.engine.begin() as conn:
+            result = conn.execute(sql, params)
+            return result.rowcount if result.rowcount is not None else 0
