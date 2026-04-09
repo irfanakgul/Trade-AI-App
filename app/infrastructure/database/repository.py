@@ -3504,9 +3504,7 @@ class PostgresRepository:
                     t."DATE",
                     t."CLOSE" AS signal_close
                 FROM {target_schema}."{target_table}" t
-                WHERE t."REALISED_CLOSE_TIMESTAMP" IS NULL
-                AND t."REALISED_CLOSE_PRICE" IS NULL
-                AND t."REALISED_PROFIT" IS NULL
+                
                 {filter_sql}
             ),
             matched AS (
