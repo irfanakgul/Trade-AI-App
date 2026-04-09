@@ -105,8 +105,9 @@ async def run_watch_pipeline(
 
         if flags.send_telegram_buy_signal and result["telegram_text"]:
             telegram_send_message(
-                title=f"💸 FINAL BUY SIGNAL: {exc_name.upper()}",
+                title=f"💸 BUY SIGNAL: {exc_name.upper()}",
                 text=result["telegram_text"],
+                channel='trades'
             )
 
         print(

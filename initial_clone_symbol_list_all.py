@@ -75,7 +75,8 @@ if __name__ == "__main__":
         if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
             telegram_send_message(
                 title="INITIAL CLONE",
-                text="✅ Initial symbols cloned succesfuly")
+                text="✅ Initial symbols cloned succesfuly",
+                )
     except Exception as e:
         if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
             telegram_send_message(
