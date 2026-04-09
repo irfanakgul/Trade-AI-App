@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from app.services.telegram_bot_chat_service import telegram_send_message  # type: ignore
 
 from app.infrastructure.database.repository import PostgresRepository
 from app.services.watch_dataset_build_service import (
@@ -9,13 +10,18 @@ from app.services.watch_dataset_build_service import (
     WatchDatasetBuildConfig,
 )
 
+from app.services.watch_signal_check_service import (
+    WatchSignalCheckService,
+    WatchSignalCheckConfig,
+)
 
 @dataclass(frozen=True)
 class WatchPipelineFlags:
     run_watch_ingestion: bool = True
-    run_watch_calc_1: bool = False
+    run_watch_signal_check: bool = False
     run_watch_calc_2: bool = False
     run_watch_calc_3: bool = False
+    send_telegram_buy_signal: bool = False
 
 
 async def run_watch_pipeline(
@@ -23,6 +29,10 @@ async def run_watch_pipeline(
     flags: WatchPipelineFlags,
     exchange: str,
     exc_name: str,
+    calc_1_open_hour: int,
+    calc_1_open_minute: int,
+    calc_1_close_hour: int,
+    calc_1_close_minute: int,
 ):
     exchange = exchange.upper().strip()
     exc_name = exc_name.lower().strip()
@@ -50,7 +60,7 @@ async def run_watch_pipeline(
                 target_table=f"{exc_name}_watch_dataset",
                 max_retries=3,
                 retry_wait_seconds=3,
-                tv_n_bars=120,
+                tv_n_bars=1000,
             ),
         )
 
@@ -66,13 +76,49 @@ async def run_watch_pipeline(
         print(f"❌ [WATCH-INGESTION] {exchange} skipped!")
 
     # ----------------------------------------------------------
-    # 2) WATCH CALC 1
+    # 2) BUY SIGNAL CHECK 
     # ----------------------------------------------------------
-    if flags.run_watch_calc_1:
-        print(f"[WATCH-CALC-1] {exchange} started...")
-        print(f"[WATCH-CALC-1] {exchange} completed.")
+    if flags.run_watch_signal_check:
+        print(f"[SIGNAL-CHECK] {exchange} started...")
+
+        svc = WatchSignalCheckService(
+            repo=repo,
+            cfg=WatchSignalCheckConfig(
+                job_name=f"watch_signal_check_{exc_name}",
+            ),
+        )
+
+        result = svc.run(
+            exchange=exchange,
+            input_schema="prod",
+            input_table=f"{exc_name}_watch_dataset",
+            output_schema="prod",
+            output_table=f"watch_signal_check_{exc_name}",
+            log_schema="logs",
+            log_table="watch_signal_check_all",
+            open_hour=calc_1_open_hour,
+            open_minute=calc_1_open_minute,
+            close_hour=calc_1_close_hour,
+            close_minute=calc_1_close_minute,
+            is_truncate_output=True,
+        )
+
+        if flags.send_telegram_buy_signal and result["telegram_text"]:
+            telegram_send_message(
+                title=f"💸 FINAL BUY SIGNAL: {exc_name.upper()}",
+                text=result["telegram_text"],
+            )
+
+        print(
+            f"[BUY-SIGNAL] {exchange} completed. "
+            f"deleted_output_rows={result['deleted_output_rows']} "
+            f"inserted_output_rows={result['inserted_output_rows']} "
+            f"inserted_log_rows={result['inserted_log_rows']} "
+            f"buy_count={result['buy_count']} "
+            f"total_rows={result['total_rows']}"
+        )
     else:
-        print(f"❌ [WATCH-CALC-1] {exchange} skipped!")
+        print(f"❌ [SIGNAL-CHECK] {exchange} skipped!")
 
     # ----------------------------------------------------------
     # 3) WATCH CALC 2

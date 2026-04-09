@@ -21,7 +21,8 @@ async def main():
 
     flags = WatchPipelineFlags(
         run_watch_ingestion=True,
-        run_watch_calc_1=False,
+        run_watch_signal_check=True,
+        send_telegram_buy_signal = True,
         run_watch_calc_2=False,
         run_watch_calc_3=False,
     )
@@ -31,6 +32,10 @@ async def main():
         flags=flags,
         exchange="NYSE", # buyuk harf
         exc_name="nyse", # kucuk harf
+        calc_1_open_hour=9,
+        calc_1_open_minute=0,
+        calc_1_close_hour=10,
+        calc_1_close_minute=45,
     )
 
 

@@ -22,11 +22,11 @@ async def main():
         #=================================================================#
         # DATA INGESTION
         #=================================================================#
-        ingest=True,
-        sync_archive_to_working = True,
-        trim_history = True,
-        build_focus_dataset= True,
-        run_dq = True,
+        ingest=False,
+        sync_archive_to_working = False,
+        trim_history = False,
+        build_focus_dataset= False,
+        run_dq = False,
 
         #=================================================================#
         # INDICATOR FLAGS

@@ -21,9 +21,11 @@ async def main():
 
     flags = WatchPipelineFlags(
         run_watch_ingestion=True,
-        run_watch_calc_1=False,
+        run_watch_signal_check=True,
+        send_telegram_buy_signal = True,
         run_watch_calc_2=False,
         run_watch_calc_3=False,
+        
     )
 
     await run_watch_pipeline(
@@ -31,6 +33,10 @@ async def main():
         flags=flags,
         exchange="BINANCE",
         exc_name="crypto",
+        calc_1_open_hour=9,
+        calc_1_open_minute=0,
+        calc_1_close_hour=10,
+        calc_1_close_minute=45,
     )
 
 

@@ -3265,3 +3265,191 @@ class PostgresRepository:
             conn.execute(q, rows)
 
         return len(rows)
+    
+
+    # ================================
+    # calc buy signal
+    # ================================
+
+    def build_watch_signal_check_rows(
+        self,
+        exchange: str,
+        input_schema: str,
+        input_table: str,
+        open_hour: int,
+        open_minute: int,
+        close_hour: int,
+        close_minute: int,
+    ) -> List[Dict[str, Any]]:
+        q = text(f"""
+            WITH last_day AS (
+                SELECT MAX(("TIMESTAMP")::date) AS dt
+                FROM {input_schema}."{input_table}"
+                WHERE "EXCHANGE" = :exchange
+            ),
+            day_data AS (
+                SELECT *
+                FROM {input_schema}."{input_table}", last_day
+                WHERE "EXCHANGE" = :exchange
+                AND ("TIMESTAMP")::date = last_day.dt
+            ),
+            symbols AS (
+                SELECT DISTINCT
+                    d."EXCHANGE",
+                    d."SYMBOL"
+                FROM day_data d
+            ),
+            merged AS (
+                SELECT
+                    s."EXCHANGE" AS exchange,
+                    s."SYMBOL" AS symbol,
+                    ld.dt AS dt,
+
+                    o.open_timestamp,
+                    o.open_price,
+
+                    c.close_timestamp,
+                    c.close_price,
+
+                    v.daily_volume
+
+                FROM symbols s
+                JOIN last_day ld ON TRUE
+
+                -- OPEN: exact varsa kendisi, yoksa requested time'dan sonraki ilk row
+                LEFT JOIN LATERAL (
+                    SELECT
+                        d."TIMESTAMP" AS open_timestamp,
+                        d."OPEN"::double precision AS open_price
+                    FROM day_data d
+                    WHERE d."EXCHANGE" = s."EXCHANGE"
+                    AND d."SYMBOL" = s."SYMBOL"
+                    AND d."TIMESTAMP"::time >= make_time(:open_hour, :open_minute, 0)
+                    ORDER BY d."TIMESTAMP" ASC
+                    LIMIT 1
+                ) o ON TRUE
+
+                -- CLOSE: exact varsa kendisi, yoksa requested time'dan önceki son row
+                LEFT JOIN LATERAL (
+                    SELECT
+                        d."TIMESTAMP" AS close_timestamp,
+                        d."CLOSE"::double precision AS close_price
+                    FROM day_data d
+                    WHERE d."EXCHANGE" = s."EXCHANGE"
+                    AND d."SYMBOL" = s."SYMBOL"
+                    AND d."TIMESTAMP"::time <= make_time(:close_hour, :close_minute, 0)
+                    ORDER BY d."TIMESTAMP" DESC
+                    LIMIT 1
+                ) c ON TRUE
+
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COALESCE(SUM(d."VOLUME"::double precision), 0) AS daily_volume
+                    FROM day_data d
+                    WHERE d."EXCHANGE" = s."EXCHANGE"
+                    AND d."SYMBOL" = s."SYMBOL"
+                    AND d."TIMESTAMP"::time >= make_time(:open_hour, :open_minute, 0)
+                    AND d."TIMESTAMP"::time <= make_time(:close_hour, :close_minute, 0)
+                ) v ON TRUE
+
+                WHERE o.open_timestamp IS NOT NULL
+                AND c.close_timestamp IS NOT NULL
+            )
+            SELECT
+                exchange,
+                symbol,
+                TO_CHAR(dt, 'DD-MM-YYYY') AS date_str,
+                open_timestamp,
+                close_timestamp,
+                LPAD(CAST(:open_hour AS text), 2, '0') || ':' || LPAD(CAST(:open_minute AS text), 2, '0') AS requested_open_time,
+                LPAD(CAST(:close_hour AS text), 2, '0') || ':' || LPAD(CAST(:close_minute AS text), 2, '0') AS requested_close_time,
+                open_price,
+                close_price,
+                (close_price - open_price) AS diff_o_c,
+                daily_volume,
+                CASE
+                    WHEN (close_price - open_price) > 0 THEN 'BUY'
+                    WHEN (close_price - open_price) < 0 THEN 'AVOID'
+                    ELSE 'WATCH'
+                END AS status,
+                CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS created_at
+            FROM merged
+            ORDER BY symbol;
+        """)
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                q,
+                {
+                    "exchange": exchange,
+                    "open_hour": int(open_hour),
+                    "open_minute": int(open_minute),
+                    "close_hour": int(close_hour),
+                    "close_minute": int(close_minute),
+                },
+            ).fetchall()
+
+        return [
+            {
+                "EXCHANGE": r[0],
+                "SYMBOL": r[1],
+                "DATE": r[2],
+                "OPEN_TIMESTAMP": r[3],
+                "CLOSE_TIMESTAMP": r[4],
+                "REQUESTED_OPEN_TIME": r[5],
+                "REQUESTED_CLOSE_TIME": r[6],
+                "OPEN": float(r[7]) if r[7] is not None else None,
+                "CLOSE": float(r[8]) if r[8] is not None else None,
+                "DIFF_O_C": float(r[9]) if r[9] is not None else None,
+                "DAILY_VOLUME": float(r[10]) if r[10] is not None else None,
+                "STATUS": r[11],
+                "CREATED_AT": r[12],
+            }
+            for r in rows
+        ]
+    
+    def insert_watch_signal_check_rows(
+        self,
+        schema: str,
+        table: str,
+        rows: List[Dict[str, Any]],
+    ) -> int:
+        if not rows:
+            return 0
+
+        q = text(f"""
+            INSERT INTO {schema}."{table}" (
+                "EXCHANGE",
+                "SYMBOL",
+                "DATE",
+                "OPEN_TIMESTAMP",
+                "CLOSE_TIMESTAMP",
+                "REQUESTED_OPEN_TIME",
+                "REQUESTED_CLOSE_TIME",
+                "OPEN",
+                "CLOSE",
+                "DIFF_O_C",
+                "DAILY_VOLUME",
+                "STATUS",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,
+                :SYMBOL,
+                :DATE,
+                :OPEN_TIMESTAMP,
+                :CLOSE_TIMESTAMP,
+                :REQUESTED_OPEN_TIME,
+                :REQUESTED_CLOSE_TIME,
+                :OPEN,
+                :CLOSE,
+                :DIFF_O_C,
+                :DAILY_VOLUME,
+                :STATUS,
+                :CREATED_AT
+            );
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+        return len(rows)
