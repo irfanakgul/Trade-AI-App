@@ -31,6 +31,7 @@ from app.services.ind_master_combined_indicators_service import IndMasterCombine
 
 from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
 from app.services.master_score_service import MasterScoreService
+from app.services.watch_signal_realised_close_service import WatchSignalRealisedCloseService
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,7 @@ class OandaHourlyDataPipelineFlags:
     # indicator flags
     #-------------------------------------
     run_master_score: bool = True
+    run_watch_realised_close:bool = True
 
 
 def _build_main_provider(name: str):
@@ -647,3 +649,23 @@ async def run_oanda_hourly_data_pipeline(repo, flags: OandaHourlyDataPipelineFla
 
     else:
         print(f"❌ [MASTER-SCORE] ASSETS skipped!")
+
+    #---------------------------------
+    # WATCH SIGNAL REALISED CLOSE UPDATE
+    #---------------------------------
+    if flags.run_watch_realised_close:
+        print(f"[WATCH-REALISED] started ({exchange})...")
+
+        svc = WatchSignalRealisedCloseService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema="raw",
+            source_table="assets_hourly_archive",
+            target_schema="prod",
+            target_table="watch_signal_check_assets",
+            log_schema="logs",
+            log_table="watch_signal_check_all",
+        )
+
+    else:
+        print("❌ [WATCH-REALISED] skipped!")

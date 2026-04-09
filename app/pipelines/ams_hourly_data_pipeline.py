@@ -32,6 +32,7 @@ from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ig
 from app.services.ind_end_dates_service import IndEndDatesService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 from app.services.master_score_service import MasterScoreService
+from app.services.watch_signal_realised_close_service import WatchSignalRealisedCloseService
 
 @dataclass(frozen=True)
 class EuronextHourlyDataPipelineFlags:
@@ -88,6 +89,7 @@ class EuronextHourlyDataPipelineFlags:
     # indicator flags
     #-------------------------------------
     run_master_score: bool = True
+    run_watch_realised_close:bool = True
 
 def _build_provider(name: str):
     name = name.lower().strip()
@@ -641,3 +643,23 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
 
     else:
         print(f"❌ [MASTER-SCORE] AMS skipped!")
+
+    #---------------------------------
+    # WATCH SIGNAL REALISED CLOSE UPDATE
+    #---------------------------------
+    if flags.run_watch_realised_close:
+        print(f"[WATCH-REALISED] started ({exchange})...")
+
+        svc = WatchSignalRealisedCloseService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema="raw",
+            source_table="ams_hourly_archive",
+            target_schema="prod",
+            target_table="watch_signal_check_ams",
+            log_schema="logs",
+            log_table="watch_signal_check_all",
+        )
+
+    else:
+        print("❌ [WATCH-REALISED] skipped!")

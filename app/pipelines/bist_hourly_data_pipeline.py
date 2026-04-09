@@ -86,12 +86,12 @@ class BistHourlyDataPipelineFlags:
     run_pivot_ind:bool = True
     run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
-    run_watch_realised_close:bool = True
 
     #-------------------------------------
     # indicator flags
     #-------------------------------------
     run_master_score: bool = True
+    run_watch_realised_close:bool = True
 
 
 def _build_provider(name: str):
