@@ -20,7 +20,7 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = WatchPipelineFlags(
-        run_watch_ingestion=False,
+        run_watch_ingestion=True,
         run_watch_signal_check=True,
         send_telegram_buy_signal = True,
         run_watch_calc_2=False,
@@ -34,24 +34,24 @@ async def main():
         exc_name="bist",
         signal_open_hour=9,
         signal_open_minute=0,
-        signal_close_hour=10,
+        signal_close_hour=9,
         signal_close_minute=45,
     )
 
 
-# asyncio.run(main())
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-        if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
-            telegram_send_message(
-                title="WATCH PIPELINE run",
-                text="✅ BIST watch pipeline has been completed succesfuly",
-            )
-    except Exception as e:
-        print(e)
-        if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
-            telegram_send_message(
-                title="WATCH PIPELINE ERROR!",
-                text=f"❌ BIST watch pipeline stopt with error!\nERROR: {e}",
-            )
+asyncio.run(main())
+# if __name__ == "__main__":
+#     try:
+#         asyncio.run(main())
+#         if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
+#             telegram_send_message(
+#                 title="WATCH PIPELINE run",
+#                 text="✅ BIST watch pipeline has been completed succesfuly",
+#             )
+#     except Exception as e:
+#         print(e)
+#         if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
+#             telegram_send_message(
+#                 title="WATCH PIPELINE ERROR!",
+#                 text=f"❌ BIST watch pipeline stopt with error!\nERROR: {e}",
+#             )

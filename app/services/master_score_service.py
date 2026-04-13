@@ -9,7 +9,7 @@ import pandas as pd
 
 from app.infrastructure.database.repository import PostgresRepository
 from app.services.telegram_bot_chat_service import telegram_send_message  # type: ignore
-
+from app.infrastructure.database.db_connector import fn_write_cloud
 
 # ============================================================
 # CONFIG
@@ -175,7 +175,8 @@ class MasterScoreService:
         df = self._prepare_numeric_columns(df)
         scored_df = self._calculate_scores(df, params)
         triage_df = self._calculate_triage_selection(scored_df, params)
-        output_df = self._format_output_columns(triage_df)
+        ranked_df = self._add_rank_column(triage_df)
+        output_df = self._format_output_columns(ranked_df)
 
         self.repo.insert_dataframe(
             df=output_df,
@@ -529,7 +530,16 @@ class MasterScoreService:
         df["stop_loss"] = df["entry_price"] * (1 - (params["stop_loss_perc"] / 100.0))
 
         df = self._calculate_trade_levels(df, params)
+        
+        cols = ['EXCHANGE', 'SYMBOL', 'FRVP_INTERVAL', 'FRVP_PERIOD_TYPE',
+       'poc_frvp_status', 'vwap_status', 'ema_status', 'rsi_status',
+       'mfi_status', 'vol_status', 'master_score', 'watchlist', 'entry_price',
+       'stop_loss', 'target_price', 'target_pct', 'risk_pct', 'rr_ratio',
+       'pivot_display']
+        df_all_status = df[cols]
+        df_all_status['RUNTIME'] = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+        fn_write_cloud(df_all_status,'gold',f'{params["exchange"].lower()}_ind_all_scores','replace')
         return df
 
     def _calculate_triage_selection(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
@@ -611,8 +621,19 @@ class MasterScoreService:
         result_df = pd.DataFrame(results)
         result_df = result_df.sort_values("MASTER_SCORE", ascending=False)
 
-        return result_df.head(params["top_n"])
+        # return result_df.head(params["top_n"])
+        return result_df
+    
+    
+    def _add_rank_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
 
+        df = df.copy()
+        df = df.sort_values("MASTER_SCORE", ascending=False).reset_index(drop=True)
+        df["RANK"] = range(1, len(df) + 1)
+
+        return df
     # ============================================================
     # OUTPUT / LOG / TELEGRAM
     # ============================================================
@@ -626,6 +647,7 @@ class MasterScoreService:
             "SYMBOL",
             "TRIAGE_ENTRY_DAY",
             "MASTER_SCORE",
+            "RANK",
             "VALID_CLUSTER_COUNT",
             "AVG_POC",
             "ENTRY_PRICE",
@@ -656,6 +678,7 @@ class MasterScoreService:
             "SYMBOL",
             "TRIAGE_ENTRY_DAY",
             "MASTER_SCORE",
+            "RANK",
             "VALID_CLUSTER_COUNT",
             "AVG_POC",
             "ENTRY_PRICE",

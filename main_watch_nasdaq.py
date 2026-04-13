@@ -32,9 +32,9 @@ async def main():
         flags=flags,
         exchange="NASDAQ",
         exc_name="nasdaq",
-        signal_open_hour=9,
+        signal_open_hour=15,
         signal_open_minute=0,
-        signal_close_hour=10,
+        signal_close_hour=15,
         signal_close_minute=45,
     )
 
@@ -52,5 +52,4 @@ if __name__ == "__main__":
         if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
             telegram_send_message(
                 title="WATCH PIPELINE ERROR!",
-                text=f"❌ NASDAQ watch pipeline stopt with error!\nERROR: {e}",
-            )
+                text=f"❌ NASDAQ watch pipeline stopt with error!\nERROR: {e}",)

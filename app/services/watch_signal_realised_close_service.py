@@ -40,6 +40,7 @@ class WatchSignalRealisedCloseService:
         target_table: Optional[str] = None,
         log_schema: Optional[str] = None,
         log_table: Optional[str] = None,
+        overwrite: bool = True,
     ) -> Dict[str, int]:
         exchange = exchange.upper().strip() if exchange else None
         source_schema = source_schema or self.cfg.source_schema
@@ -55,6 +56,7 @@ class WatchSignalRealisedCloseService:
             target_schema=target_schema,
             target_table=target_table,
             exchange=exchange,
+            overwrite=overwrite,
         )
 
         updated_log = self.repo.update_realised_close_fields_from_hourly_source(
@@ -63,6 +65,7 @@ class WatchSignalRealisedCloseService:
             target_schema=log_schema,
             target_table=log_table,
             exchange=exchange,
+            overwrite=overwrite,
         )
 
         print(

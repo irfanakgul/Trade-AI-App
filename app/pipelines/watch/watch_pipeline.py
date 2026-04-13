@@ -10,7 +10,7 @@ from app.services.watch_dataset_build_service import (
     WatchDatasetBuildConfig,
 )
 
-from app.services.watch_signal_check_service import (
+from app.services.watch_signal_check_service import ( # type: ignore
     WatchSignalCheckService,
     WatchSignalCheckConfig,
 )
@@ -105,7 +105,7 @@ async def run_watch_pipeline(
 
         if flags.send_telegram_buy_signal and result["telegram_text"]:
             telegram_send_message(
-                title=f"💸 BUY SIGNAL: {exc_name.upper()}",
+                title=f"✅ 💰 BUY SIGNAL: {exc_name.upper()}",
                 text=result["telegram_text"],
                 channel='trades'
             )
@@ -127,8 +127,8 @@ async def run_watch_pipeline(
     if flags.run_watch_calc_2:
         print(f"[WATCH-CALC-2] {exchange} started...")
         print(f"[WATCH-CALC-2] {exchange} completed.")
-    else:
-        print(f"❌ [WATCH-CALC-2] {exchange} skipped!")
+    # else:
+    #     print(f"❌ [WATCH-CALC-2] {exchange} skipped!")
 
     # ----------------------------------------------------------
     # 4) WATCH CALC 3
@@ -136,5 +136,5 @@ async def run_watch_pipeline(
     if flags.run_watch_calc_3:
         print(f"[WATCH-CALC-3] {exchange} started...")
         print(f"[WATCH-CALC-3] {exchange} completed.")
-    else:
-        print(f"❌ [WATCH-CALC-3] {exchange} skipped!")
+    # else:
+    #     print(f"❌ [WATCH-CALC-3] {exchange} skipped!")

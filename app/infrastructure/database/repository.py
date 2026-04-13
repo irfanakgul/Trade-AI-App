@@ -3479,22 +3479,25 @@ class PostgresRepository:
         target_schema: str,
         target_table: str,
         exchange: str | None = None,
+        overwrite: bool = False,
     ) -> int:
-        """
-        target table içindeki realised alanları NULL olan satırlar için,
-        source hourly table'dan aynı günün son TS ve CLOSE değerini bulur
-        ve target tabloyu update eder.
+        from sqlalchemy import text
 
-        DATE formatı target tabloda: DD-MM-YYYY
-        TS formatı source tabloda: timestamp
-        """
-
-        filter_sql = ""
+        where_clauses = ["1=1"]
         params = {}
 
+        if not overwrite:
+            where_clauses.extend([
+                't."REALISED_CLOSE_TIMESTAMP" IS NULL',
+                't."REALISED_CLOSE_PRICE" IS NULL',
+                't."REALISED_PROFIT" IS NULL',
+            ])
+
         if exchange is not None:
-            filter_sql = ' AND t."EXCHANGE" = :exchange'
+            where_clauses.append('t."EXCHANGE" = :exchange')
             params["exchange"] = exchange
+
+        where_sql = " AND ".join(where_clauses)
 
         sql = text(f"""
             WITH pending AS (
@@ -3504,8 +3507,7 @@ class PostgresRepository:
                     t."DATE",
                     t."CLOSE" AS signal_close
                 FROM {target_schema}."{target_table}" t
-                
-                {filter_sql}
+                WHERE {where_sql}
             ),
             matched AS (
                 SELECT
@@ -3553,3 +3555,281 @@ class PostgresRepository:
         with self.engine.begin() as conn:
             result = conn.execute(sql, params)
             return result.rowcount if result.rowcount is not None else 0
+        
+
+# ======================
+# final master combined
+# ======================
+    def build_master_final_combined(
+        self,
+        exchange: str,
+        target_schema: str,
+        target_table: str,
+        log_schema: str,
+        log_table: str,
+        main_schema: str,
+        main_table: str,
+        score_schema: str,
+        score_table: str,
+        triage_schema: str,
+        triage_table: str,
+    ) -> Dict[str, int]:
+        """
+        Build final combined table from:
+        1) main_table
+        2) left join score_table on EXCHANGE, SYMBOL, FRVP_PERIOD_TYPE
+        3) left join triage_table on EXCHANGE, SYMBOL
+
+        - target table is truncated before insert
+        - log table is append-only
+        """
+
+        exchange = exchange.upper().strip()
+
+        # 1) truncate target
+        self.truncate_table(target_schema, target_table)
+
+        insert_columns = [
+            "EXCHANGE",
+            "SYMBOL",
+
+            "FRVP_INTERVAL",
+            "FRVP_PERIOD_TYPE",
+            "FRVP_HIGHEST_DATE",
+            "FRVP_HIGHEST_VALUE",
+            "FRVP_ROW_COUNT_AFTER_HIGHEST",
+            "FRVP_DAY_COUNT_AFTER_HIGHEST",
+            "FRVP_LATEST_CLOSE_VALUE",
+            "FRVP_POC",
+            "FRVP_VAL",
+            "FRVP_VAH",
+
+            "BS_OPEN_PRICE",
+            "BS_CLOSE_PRICE",
+            "BS_DIFFER",
+            "BS_PERC",
+            "BS_BAR_STATUS",
+
+            "RAW_END_DATE",
+            "BRONZE_END_DATE",
+            "SILVER_END_DATE",
+            "SILVER_CONVERTED_END_DATE",
+            "EXPECTED_END_DATE",
+
+            "EMA_TIMESTAMP",
+            "EMA_END_DATE",
+            "EMA3",
+            "EMA5",
+            "EMA14",
+            "EMA20",
+            "EMA_STATUS_5_20",
+            "EMA_CROSS_5_20",
+            "EMA_STATUS_3_20",
+            "EMA_CROSS_3_20",
+            "EMA_STATUS_3_14",
+            "EMA_CROSS_3_14",
+            "EMA_DAYS_SINCE_CROSS_5_20",
+            "EMA_DAYS_SINCE_CROSS_3_20",
+            "EMA_DAYS_SINCE_CROSS_3_14",
+
+            "RSI",
+            "RSI_MA",
+            "RSI_STATUS",
+            "RSI_CROSS",
+            "RSI_CROSS_DAYS_AGO",
+
+            "MFI",
+            "MFI_YESTERDAY",
+            "MFI_12DAY_AVG",
+            "MFI_DIRECTION",
+
+            "VWAP_HIGHEST_VALUE",
+            "VWAP_HIGHEST_TIMESTAMP",
+            "VWAP",
+            "VOL_AVG_5DAY",
+            "VOL_AVG_10DAY",
+            "VOL_AVG_20DAY",
+            "VOL_YESTERDAY",
+            "VOL_LASTDAY",
+            "VOL_STATUS",
+
+            "PVT_START_DATE",
+            "PVT_END_DATE",
+            "PVT_YEAR",
+            "PIVOT",
+            "PVT_R1",
+            "PVT_R2",
+            "PVT_R3",
+            "PVT_R4",
+            "PVT_R5",
+            "PVT_S1",
+            "PVT_S2",
+            "PVT_S3",
+            "PVT_S4",
+            "PVT_S5",
+            "PVT_STATUS",
+
+            "POC_FRVP_STATUS",
+            "VWAP_STATUS",
+            "EMA_STATUS",
+            "RSI_STATUS_TXT",
+            "MFI_STATUS",
+            "VOL_STATUS_TXT",
+            "MASTER_SCORE",
+            "TRIAGE_ENTRY_DAY",
+            "TRIAGE_SCORE",
+            "RANK",
+            "VALID_CLUSTER_COUNT",
+            "AVG_POC",
+            "STOP_LOSS",
+            "TARGET_PRICE",
+            "STOP_LOSS_PERC",
+            "TARGET_PERC",
+            "CREATED_AT",
+            "CREATED_DAY",
+            "RUNTIME",
+        ]
+
+        insert_columns_sql = ",\n                ".join(f'"{col}"' for col in insert_columns)
+
+        select_sql = f"""
+            SELECT
+                m."EXCHANGE" AS "EXCHANGE",
+                m."SYMBOL" AS "SYMBOL",
+
+                m."FRVP_INTERVAL" AS "FRVP_INTERVAL",
+                m."FRVP_PERIOD_TYPE" AS "FRVP_PERIOD_TYPE",
+                m."FRVP_HIGHEST_DATE" AS "FRVP_HIGHEST_DATE",
+                m."FRVP_HIGHEST_VALUE" AS "FRVP_HIGHEST_VALUE",
+                m."FRVP_ROW_COUNT_AFTER_HIGHEST" AS "FRVP_ROW_COUNT_AFTER_HIGHEST",
+                m."FRVP_DAY_COUNT_AFTER_HIGHEST" AS "FRVP_DAY_COUNT_AFTER_HIGHEST",
+                m."FRVP_LATEST_CLOSE_VALUE" AS "FRVP_LATEST_CLOSE_VALUE",
+                m."FRVP_POC" AS "FRVP_POC",
+                m."FRVP_VAL" AS "FRVP_VAL",
+                m."FRVP_VAH" AS "FRVP_VAH",
+
+                m."BS_OPEN_PRICE" AS "BS_OPEN_PRICE",
+                m."BS_CLOSE_PRICE" AS "BS_CLOSE_PRICE",
+                m."BS_DIFFER" AS "BS_DIFFER",
+                m."BS_PERC" AS "BS_PERC",
+                m."BS_BAR_STATUS" AS "BS_BAR_STATUS",
+
+                m."RAW_END_DATE" AS "RAW_END_DATE",
+                m."BRONZE_END_DATE" AS "BRONZE_END_DATE",
+                m."SILVER_END_DATE" AS "SILVER_END_DATE",
+                m."SILVER_CONVERTED_END_DATE" AS "SILVER_CONVERTED_END_DATE",
+                m."EXPECTED_END_DATE" AS "EXPECTED_END_DATE",
+
+                m."EMA_TIMESTAMP" AS "EMA_TIMESTAMP",
+                m."EMA_END_DATE" AS "EMA_END_DATE",
+                m."EMA3" AS "EMA3",
+                m."EMA5" AS "EMA5",
+                m."EMA14" AS "EMA14",
+                m."EMA20" AS "EMA20",
+                m."EMA_STATUS_5_20" AS "EMA_STATUS_5_20",
+                m."EMA_CROSS_5_20" AS "EMA_CROSS_5_20",
+                m."EMA_STATUS_3_20" AS "EMA_STATUS_3_20",
+                m."EMA_CROSS_3_20" AS "EMA_CROSS_3_20",
+                m."EMA_STATUS_3_14" AS "EMA_STATUS_3_14",
+                m."EMA_CROSS_3_14" AS "EMA_CROSS_3_14",
+                m."EMA_DAYS_SINCE_CROSS_5_20" AS "EMA_DAYS_SINCE_CROSS_5_20",
+                m."EMA_DAYS_SINCE_CROSS_3_20" AS "EMA_DAYS_SINCE_CROSS_3_20",
+                m."EMA_DAYS_SINCE_CROSS_3_14" AS "EMA_DAYS_SINCE_CROSS_3_14",
+
+                m."RSI" AS "RSI",
+                m."RSI_MA" AS "RSI_MA",
+                m."RSI_STATUS" AS "RSI_STATUS",
+                m."RSI_CROSS" AS "RSI_CROSS",
+                m."RSI_CROSS_DAYS_AGO" AS "RSI_CROSS_DAYS_AGO",
+
+                m."MFI" AS "MFI",
+                m."MFI_YESTERDAY" AS "MFI_YESTERDAY",
+                m."MFI_12DAY_AVG" AS "MFI_12DAY_AVG",
+                m."MFI_DIRECTION" AS "MFI_DIRECTION",
+
+                m."VWAP_HIGHEST_VALUE" AS "VWAP_HIGHEST_VALUE",
+                m."VWAP_HIGHEST_TIMESTAMP" AS "VWAP_HIGHEST_TIMESTAMP",
+                m."VWAP" AS "VWAP",
+                m."VOL_AVG_5DAY" AS "VOL_AVG_5DAY",
+                m."VOL_AVG_10DAY" AS "VOL_AVG_10DAY",
+                m."VOL_AVG_20DAY" AS "VOL_AVG_20DAY",
+                m."VOL_YESTERDAY" AS "VOL_YESTERDAY",
+                m."VOL_LASTDAY" AS "VOL_LASTDAY",
+                m."VOL_STATUS" AS "VOL_STATUS",
+
+                m."PVT_START_DATE" AS "PVT_START_DATE",
+                m."PVT_END_DATE" AS "PVT_END_DATE",
+                m."PVT_YEAR" AS "PVT_YEAR",
+                m."PIVOT" AS "PIVOT",
+                m."PVT_R1" AS "PVT_R1",
+                m."PVT_R2" AS "PVT_R2",
+                m."PVT_R3" AS "PVT_R3",
+                m."PVT_R4" AS "PVT_R4",
+                m."PVT_R5" AS "PVT_R5",
+                m."PVT_S1" AS "PVT_S1",
+                m."PVT_S2" AS "PVT_S2",
+                m."PVT_S3" AS "PVT_S3",
+                m."PVT_S4" AS "PVT_S4",
+                m."PVT_S5" AS "PVT_S5",
+                m."PVT_STATUS" AS "PVT_STATUS",
+
+                s."poc_frvp_status" AS "POC_FRVP_STATUS",
+                s."vwap_status" AS "VWAP_STATUS",
+                s."ema_status" AS "EMA_STATUS",
+                s."rsi_status" AS "RSI_STATUS_TXT",
+                s."mfi_status" AS "MFI_STATUS",
+                s."vol_status" AS "VOL_STATUS_TXT",
+                s."master_score" AS "MASTER_SCORE",
+                e."TRIAGE_ENTRY_DAY" AS "TRIAGE_ENTRY_DAY",
+
+                e."MASTER_SCORE" AS "TRIAGE_SCORE",
+                e."RANK" AS "RANK",
+                e."VALID_CLUSTER_COUNT" AS "VALID_CLUSTER_COUNT",
+                e."AVG_POC" AS "AVG_POC",
+                e."STOP_LOSS" AS "STOP_LOSS",
+                e."TARGET_PRICE" AS "TARGET_PRICE",
+                e."STOP_LOSS_PERC" AS "STOP_LOSS_PERC",
+                e."TARGET_PERC" AS "TARGET_PERC",
+
+                CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS "CREATED_AT",
+                TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY') AS "CREATED_DAY",
+                TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY HH24:MI') AS "RUNTIME"
+
+            FROM {main_schema}."{main_table}" m
+
+            LEFT JOIN {score_schema}."{score_table}" s
+                ON m."EXCHANGE" = s."EXCHANGE"
+            AND m."SYMBOL" = s."SYMBOL"
+            AND m."FRVP_PERIOD_TYPE" = s."FRVP_PERIOD_TYPE"
+
+            LEFT JOIN {triage_schema}."{triage_table}" e
+                ON m."EXCHANGE" = e."EXCHANGE"
+            AND m."SYMBOL" = e."SYMBOL"
+
+            WHERE m."EXCHANGE" = :exchange
+        """
+
+        insert_target_sql = f"""
+            INSERT INTO {target_schema}."{target_table}" (
+                    {insert_columns_sql}
+            )
+            {select_sql}
+        """
+
+        insert_log_sql = f"""
+            INSERT INTO {log_schema}."{log_table}" (
+                    {insert_columns_sql}
+            )
+            {select_sql}
+        """
+
+        count_sql = text(f'SELECT COUNT(*) FROM {target_schema}."{target_table}";')
+
+        with self.engine.begin() as conn:
+            conn.execute(text(insert_target_sql), {"exchange": exchange})
+            master_count = conn.execute(count_sql).scalar() or 0
+            conn.execute(text(insert_log_sql), {"exchange": exchange})
+
+        return {
+            "master_inserted_rows": int(master_count),
+        }

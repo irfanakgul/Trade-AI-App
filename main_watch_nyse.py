@@ -32,9 +32,9 @@ async def main():
         flags=flags,
         exchange="NYSE", # buyuk harf
         exc_name="nyse", # kucuk harf
-        signal_open_hour=9,
+        signal_open_hour=15,
         signal_open_minute=0,
-        signal_close_hour=10,
+        signal_close_hour=15,
         signal_close_minute=45,
     )
 
