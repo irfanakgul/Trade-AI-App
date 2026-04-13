@@ -5,19 +5,19 @@ poll_interval_seconds: 60
 jobs:
   - name: initial_scope_clone
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "19:00"
+    at: "18:30"
     cmd: ".venv/bin/python -u initial_clone_symbol_list_all.py"
     lock: "initial_scope_clone_lock"
 
   - name: bist_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "19:05"
+    at: "18:33"
     cmd: ".venv/bin/python -u main_bist_hourly_data.py"
     lock: "bist_hourly_lock"
 
   - name: ams_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "21:00"
+    at: "19:00"
     cmd: ".venv/bin/python -u main_ams_hourly_data.py"
     lock: "ams_hourly_lock"
 

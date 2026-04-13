@@ -593,7 +593,6 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
     #---------------------------------
     
     if flags.run_combined_indicators:
-        print('in master')
         svc = IndMasterCombinedIndicatorsService(repo=repo)
 
         svc.run(
@@ -625,13 +624,6 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
         #         drop_and_recreate = False
         #     )
 
-        
-        # write to gg
-        repo.fn_repo_write_to_google_generic(
-            schema='silver',
-            table='cloned_focus_symbol_list',
-            sheet_name= 'ALL_SYMBOLS_STATUS',
-            replace_append = 'replace')
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
@@ -695,6 +687,13 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             schema='gold',
             table=f"{exc_name}_master_final_combined",
             sheet_name= f'MASTER_IND_{exc_name.upper()}',
+            replace_append = 'replace')
+
+        # write to gg
+        repo.fn_repo_write_to_google_generic(
+            schema='silver',
+            table='cloned_focus_symbol_list',
+            sheet_name= 'ALL_SYMBOLS_STATUS',
             replace_append = 'replace')
 
         print(

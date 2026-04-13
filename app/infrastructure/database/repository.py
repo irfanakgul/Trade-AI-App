@@ -2484,19 +2484,14 @@ class PostgresRepository:
             {select_sql}
         """
 
-        insert_log_sql = f"""
-            INSERT INTO {log_schema}."{log_table}" (
-                    {insert_columns_sql}
-            )
-            {select_sql}
-        """
+        
 
         count_sql = text(f'SELECT COUNT(*) FROM {target_schema}."{target_table}";')
 
         with self.engine.begin() as conn:
             conn.execute(text(insert_master_sql), {"exchange": exchange})
             master_count = conn.execute(count_sql).scalar() or 0
-            conn.execute(text(insert_log_sql), {"exchange": exchange})
+            
 
         return {
             "master_inserted_rows": int(master_count),

@@ -192,7 +192,7 @@ class MasterScoreService:
                 table_name=params["log_table"],
             )
 
-        telegram_text = self._build_telegram_text(output_df, params["exchange"])
+        telegram_text = self._build_telegram_text(output_df, params["exchange"],params['top_n'])
         print(telegram_text)
 
         if params["send_telegram"] and not output_df.empty:
@@ -698,13 +698,13 @@ class MasterScoreService:
 
         return log_df[existing + remaining]
 
-    def _build_telegram_text(self, df: pd.DataFrame, exchange: str) -> str:
+    def _build_telegram_text(self, df: pd.DataFrame, exchange: str,top_n:int) -> str:
         if df.empty:
             return f"[MASTER-SCORE] {exchange} | No candidates found."
 
         lines: List[str] = []
-
-        for idx, row in enumerate(df.itertuples(index=False), start=1):
+        df_top_n = df.sort_values(by="MASTER_SCORE", ascending=False).head(top_n)
+        for idx, row in enumerate(df_top_n.itertuples(index=False), start=1):
             stop_pct_num = str(row.STOP_LOSS_PERC).replace("%", "")
             target_pct_num = str(row.TARGET_PERC).replace("%", "")
 
