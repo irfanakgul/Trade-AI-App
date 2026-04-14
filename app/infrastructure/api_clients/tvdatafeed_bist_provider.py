@@ -14,12 +14,12 @@ from app.infrastructure.api_clients.market_data_provider import MarketDataProvid
 class TvDatafeedBistConfig:
     username: str
     password: str
-    n_bars: int = 200000  # can be tuned
+    n_bars: int = 200000
 
 
 class TvDatafeedBistProvider(MarketDataProvider):
     """
-    Fallback BIST provider using tvDatafeed. No '.IS' suffix needed.
+    BIST provider using tvDatafeed. No '.IS' suffix needed.
     """
 
     def __init__(self, cfg: TvDatafeedBistConfig):
@@ -34,23 +34,31 @@ class TvDatafeedBistProvider(MarketDataProvider):
     ) -> AsyncIterator[List[AggBar]]:
         df = self._tv.get_hist(
             symbol=symbol,
-            exchange="BIST",
+            exchange="",
             interval=Interval.in_1_minute,
             n_bars=self.cfg.n_bars,
         )
 
-        if df is None or len(df) == 0:
+        if df is None or df.empty:
             yield []
             return
 
-        df = df.reset_index()
-        # tvDatafeed uses 'datetime' index; normalize
+        df = df.reset_index().copy()
+
+        # normalize datetime FIRST and keep only one DATETIME column
         if "datetime" in df.columns:
-            df["DATETIME"] = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
+            dt_series = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
         elif "DATETIME" in df.columns:
-            df["DATETIME"] = pd.to_datetime(df["DATETIME"], utc=True, errors="coerce")
+            dt_series = pd.to_datetime(df["DATETIME"], utc=True, errors="coerce")
         else:
-            df["DATETIME"] = pd.to_datetime(df.iloc[:, 0], utc=True, errors="coerce")
+            dt_series = pd.to_datetime(df.iloc[:, 0], utc=True, errors="coerce")
+
+        # drop possible duplicate datetime-like columns before assigning normalized one
+        cols_to_drop = [c for c in df.columns if c.lower() == "datetime"]
+        if cols_to_drop:
+            df = df.drop(columns=cols_to_drop, errors="ignore")
+
+        df["DATETIME"] = dt_series
 
         df = df.dropna(subset=["DATETIME"]).sort_values("DATETIME")
 
@@ -58,26 +66,39 @@ class TvDatafeedBistProvider(MarketDataProvider):
         end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
         df = df[(df["DATETIME"] >= start_dt) & (df["DATETIME"] <= end_dt)]
 
-        # Normalize columns
-        df.columns = [c.upper() for c in df.columns]
+        if df.empty:
+            yield []
+            return
+
+        df.columns = [str(c).upper() for c in df.columns]
+
         for c in ["OPEN", "HIGH", "LOW", "CLOSE", "VOLUME"]:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
 
         batch: List[AggBar] = []
-        for _, r in df.iterrows():
-            dt = r["DATETIME"]
-            if pd.isna(dt):
+
+        for row in df.itertuples(index=False):
+            dt = getattr(row, "DATETIME", None)
+            if dt is None or pd.isna(dt):
                 continue
-            ts_ms = int(dt.timestamp() * 1000)
+
+            ts_ms = int(pd.Timestamp(dt).timestamp() * 1000)
+
+            open_v = getattr(row, "OPEN", 0.0)
+            high_v = getattr(row, "HIGH", 0.0)
+            low_v = getattr(row, "LOW", 0.0)
+            close_v = getattr(row, "CLOSE", 0.0)
+            volume_v = getattr(row, "VOLUME", 0.0)
+
             batch.append(
                 AggBar(
                     ts_ms=ts_ms,
-                    open=float(r.get("OPEN", 0.0) or 0.0),
-                    high=float(r.get("HIGH", 0.0) or 0.0),
-                    low=float(r.get("LOW", 0.0) or 0.0),
-                    close=float(r.get("CLOSE", 0.0) or 0.0),
-                    volume=float(r.get("VOLUME", 0.0) or 0.0),
+                    open=float(0.0 if pd.isna(open_v) else open_v),
+                    high=float(0.0 if pd.isna(high_v) else high_v),
+                    low=float(0.0 if pd.isna(low_v) else low_v),
+                    close=float(0.0 if pd.isna(close_v) else close_v),
+                    volume=float(0.0 if pd.isna(volume_v) else volume_v),
                 )
             )
 

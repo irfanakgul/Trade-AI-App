@@ -9,7 +9,7 @@ import pandas as pd
 
 from app.infrastructure.database.repository import PostgresRepository
 from app.services.telegram_bot_chat_service import telegram_send_message  # type: ignore
-
+from app.infrastructure.database.db_connector import fn_write_cloud
 
 # ============================================================
 # CONFIG
@@ -61,11 +61,11 @@ class LogConfig:
 
 @dataclass
 class MasterScoreServiceConfig:
-    exchange: str = "BIST"
-    input_schema: str = "gold"
-    input_table: str = "bist_master_combined_indicators"
-    output_schema: str = "gold"
-    output_table: str = "bist_evaluation_master_score"
+    exchange: str = ""
+    input_schema: str = ""
+    input_table: str = ""
+    output_schema: str = ""
+    output_table: str = ""
     truncate_before_load: bool = True
     created_at: Optional[datetime] = None
     weights: MasterScoreWeights = field(default_factory=MasterScoreWeights)
@@ -175,7 +175,8 @@ class MasterScoreService:
         df = self._prepare_numeric_columns(df)
         scored_df = self._calculate_scores(df, params)
         triage_df = self._calculate_triage_selection(scored_df, params)
-        output_df = self._format_output_columns(triage_df)
+        ranked_df = self._add_rank_column(triage_df)
+        output_df = self._format_output_columns(ranked_df)
 
         self.repo.insert_dataframe(
             df=output_df,
@@ -191,7 +192,7 @@ class MasterScoreService:
                 table_name=params["log_table"],
             )
 
-        telegram_text = self._build_telegram_text(output_df, params["exchange"])
+        telegram_text = self._build_telegram_text(output_df, params["exchange"],params['top_n'])
         print(telegram_text)
 
         if params["send_telegram"] and not output_df.empty:
@@ -529,7 +530,24 @@ class MasterScoreService:
         df["stop_loss"] = df["entry_price"] * (1 - (params["stop_loss_perc"] / 100.0))
 
         df = self._calculate_trade_levels(df, params)
+        
+        cols = ['EXCHANGE', 'SYMBOL', 'FRVP_INTERVAL', 'FRVP_PERIOD_TYPE',
+       'poc_frvp_status', 'vwap_status', 'ema_status', 'rsi_status',
+       'mfi_status', 'vol_status', 'master_score', 'watchlist', 'entry_price',
+       'stop_loss', 'target_price', 'target_pct', 'risk_pct', 'rr_ratio',
+       'pivot_display']
+        df_all_status = df[cols]
+        df_all_status['RUNTIME'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        exchange = params["exchange"]
+        if exchange == "EURONEXT":
+            name = 'ams'
+        elif  exchange == "BINANCE":
+            name = 'crypto'
+        else:
+            name = params["exchange"].lower()
 
+        fn_write_cloud(df_all_status,'gold',f'{name}_ind_all_scores','replace')
         return df
 
     def _calculate_triage_selection(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
@@ -611,8 +629,19 @@ class MasterScoreService:
         result_df = pd.DataFrame(results)
         result_df = result_df.sort_values("MASTER_SCORE", ascending=False)
 
-        return result_df.head(params["top_n"])
+        # return result_df.head(params["top_n"])
+        return result_df
+    
+    
+    def _add_rank_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
 
+        df = df.copy()
+        df = df.sort_values("MASTER_SCORE", ascending=False).reset_index(drop=True)
+        df["RANK"] = range(1, len(df) + 1)
+
+        return df
     # ============================================================
     # OUTPUT / LOG / TELEGRAM
     # ============================================================
@@ -626,6 +655,7 @@ class MasterScoreService:
             "SYMBOL",
             "TRIAGE_ENTRY_DAY",
             "MASTER_SCORE",
+            "RANK",
             "VALID_CLUSTER_COUNT",
             "AVG_POC",
             "ENTRY_PRICE",
@@ -656,6 +686,7 @@ class MasterScoreService:
             "SYMBOL",
             "TRIAGE_ENTRY_DAY",
             "MASTER_SCORE",
+            "RANK",
             "VALID_CLUSTER_COUNT",
             "AVG_POC",
             "ENTRY_PRICE",
@@ -675,22 +706,19 @@ class MasterScoreService:
 
         return log_df[existing + remaining]
 
-    def _build_telegram_text(self, df: pd.DataFrame, exchange: str) -> str:
+    def _build_telegram_text(self, df: pd.DataFrame, exchange: str,top_n:int) -> str:
         if df.empty:
             return f"[MASTER-SCORE] {exchange} | No candidates found."
 
         lines: List[str] = []
-
-        for idx, row in enumerate(df.itertuples(index=False), start=1):
+        df_top_n = df.sort_values(by="MASTER_SCORE", ascending=False).head(top_n)
+        for idx, row in enumerate(df_top_n.itertuples(index=False), start=1):
             stop_pct_num = str(row.STOP_LOSS_PERC).replace("%", "")
             target_pct_num = str(row.TARGET_PERC).replace("%", "")
 
             lines.append(
                 f"{idx}) {row.EXCHANGE}:{row.SYMBOL} | "
                 f"MasterScore: {row.MASTER_SCORE} | "
-                f"StopLoss: {row.STOP_LOSS} | "
-                f"Target%: {target_pct_num} | "
-                f"Stop%: {stop_pct_num}"
-            )
+                f"StopLoss: {row.STOP_LOSS} | ")
 
         return "\n".join(lines)

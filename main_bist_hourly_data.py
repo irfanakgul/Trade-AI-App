@@ -23,11 +23,11 @@ async def main():
         #=================================================================#
         # DATA INGESTION
         #=================================================================#
-        ingest=False,
+        ingest=True,
         sync_archive_to_working = True,
         trim_history = True,
         build_focus_dataset= True,
-        run_dq = False,
+        run_dq = True,
 
         #=================================================================#
         # INDICATOR FLAGS
@@ -42,8 +42,11 @@ async def main():
         run_pivot_ind = True,
         run_source_end_dates_ind = True,
         run_combined_indicators = True,
-        run_master_score = True
-    )
+        run_master_score = True,
+        run_master_final_combined = True,
+        run_watch_realised_close = True,
+
+        )
 
     await run_bist_hourly_data_pipeline(repo, flags,'BIST')
 

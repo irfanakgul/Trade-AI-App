@@ -34,6 +34,7 @@ from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ig
 from app.services.ind_end_dates_service import IndEndDatesService
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 from app.services.master_score_service import MasterScoreService
+from app.services.watch_signal_realised_close_service import WatchSignalRealisedCloseService # type: ignore
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,8 @@ class BinanceHourlyDataPipelineFlags:
     # indicator flags
     #-------------------------------------
     run_master_score: bool = True
+    run_watch_realised_close:bool = True
+    run_master_final_combined:bool = True
 
 def _build_provider(name: str):
     name = name.lower().strip()
@@ -646,3 +649,62 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
 
     else:
         print(f"❌ [MASTER-SCORE] CRYPTO skipped!")
+
+    #---------------------------------
+    # FINAL MASTER COMBINED
+    #---------------------------------
+    if flags.run_master_final_combined:
+        print(f"[MASTER-FINAL] started ({exchange})...")
+        exc_name = 'crypto'
+        result = repo.build_master_final_combined(
+            exchange=exchange,
+
+            target_schema="gold",
+            target_table=f"{exc_name}_master_final_combined",
+
+            log_schema="logs",
+            log_table=f"logs_{exc_name}_master_final_combined",
+
+            main_schema="gold",
+            main_table=f"{exc_name}_master_combined_indicators",
+
+            score_schema="gold",
+            score_table=f"{exc_name}_ind_all_scores",
+
+            triage_schema="gold",
+            triage_table=f"{exc_name}_evaluation_master_score",
+        )
+
+        # write to gg
+        repo.fn_repo_write_to_google_generic(
+            schema='gold',
+            table=f"{exc_name}_master_final_combined",
+            sheet_name= f'MASTER_IND_{exc_name.upper()}',
+            replace_append = 'replace')
+
+        print(
+            f"[MASTER-FINAL] done ({exchange}) "
+            f"master_inserted_rows={result['master_inserted_rows']}"
+        )
+    else:
+        print(f"❌ [MASTER-FINAL] skipped ({exchange})")
+
+    #---------------------------------
+    # WATCH SIGNAL REALISED CLOSE UPDATE
+    #---------------------------------
+    if flags.run_watch_realised_close:
+        print(f"[WATCH-REALISED] started ({exchange})...")
+
+        svc = WatchSignalRealisedCloseService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema="raw",
+            source_table="crypto_hourly_archive",
+            target_schema="prod",
+            target_table="watch_signal_check_crypto",
+            log_schema="logs",
+            log_table="watch_signal_check_all",
+        )
+
+    else:
+        print("❌ [WATCH-REALISED] skipped!")

@@ -5,19 +5,19 @@ poll_interval_seconds: 60
 jobs:
   - name: initial_scope_clone
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "19:30"
+    at: "18:30"
     cmd: ".venv/bin/python -u initial_clone_symbol_list_all.py"
     lock: "initial_scope_clone_lock"
 
   - name: bist_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "19:33"
+    at: "18:33"
     cmd: ".venv/bin/python -u main_bist_hourly_data.py"
     lock: "bist_hourly_lock"
 
   - name: ams_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "20:00"
+    at: "19:00"
     cmd: ".venv/bin/python -u main_ams_hourly_data.py"
     lock: "ams_hourly_lock"
 
@@ -44,10 +44,34 @@ jobs:
     cmd: ".venv/bin/python -u main_crypto_hourly_data.py"
     lock: "crypto_hourly_lock"
 
-  - name: assets_hourly
-    run_days: [MON, TUE, WED, THU, FRI, SAT]
-    at: "22:30"
-    cmd: ".venv/bin/python -u main_assets_hourly_data.py"
-    lock: "assets_hourly_lock"
 
-  
+# watch pipelines
+  - name: watch_bist_pp
+    run_days: [MON, TUE, WED, THU, FRI]
+    at: "08:45"
+    cmd: ".venv/bin/python -u main_watch_bist.py"
+    lock: "watch_bist_pp_lock"
+    
+  - name: watch_ams_pp
+    run_days: [MON, TUE, WED, THU, FRI]
+    at: "09:46"
+    cmd: ".venv/bin/python -u main_watch_ams.py"
+    lock: "watch_ams_pp_lock"
+
+  - name: watch_nasdaq_pp
+    run_days: [MON, TUE, WED, THU, FRI]
+    at: "15:45"
+    cmd: ".venv/bin/python -u main_watch_nasdaq.py"
+    lock: "watch_nasdaq_pp_lock"
+
+  - name: watch_nyse_pp
+    run_days: [MON, TUE, WED, THU, FRI]
+    at: "15:50"
+    cmd: ".venv/bin/python -u main_watch_nyse.py"
+    lock: "watch_nyse_pp_lock"
+
+  - name: watch_crypto_pp
+    run_days: [MON, TUE, WED, THU, FRI]
+    at: "10:00"
+    cmd: ".venv/bin/python -u main_watch_crypto.py"
+    lock: "watch_crypto_pp_lock"
