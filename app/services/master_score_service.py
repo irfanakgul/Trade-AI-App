@@ -61,11 +61,11 @@ class LogConfig:
 
 @dataclass
 class MasterScoreServiceConfig:
-    exchange: str = "BIST"
-    input_schema: str = "gold"
-    input_table: str = "bist_master_combined_indicators"
-    output_schema: str = "gold"
-    output_table: str = "bist_evaluation_master_score"
+    exchange: str = ""
+    input_schema: str = ""
+    input_table: str = ""
+    output_schema: str = ""
+    output_table: str = ""
     truncate_before_load: bool = True
     created_at: Optional[datetime] = None
     weights: MasterScoreWeights = field(default_factory=MasterScoreWeights)
@@ -538,8 +538,16 @@ class MasterScoreService:
        'pivot_display']
         df_all_status = df[cols]
         df_all_status['RUNTIME'] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        exchange = params["exchange"]
+        if exchange == "EURONEXT":
+            name = 'ams'
+        elif  exchange == "BINANCE":
+            name = 'crypto'
+        else:
+            name = params["exchange"].lower()
 
-        fn_write_cloud(df_all_status,'gold',f'{params["exchange"].lower()}_ind_all_scores','replace')
+        fn_write_cloud(df_all_status,'gold',f'{name}_ind_all_scores','replace')
         return df
 
     def _calculate_triage_selection(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:

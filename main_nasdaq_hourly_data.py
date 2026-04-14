@@ -45,9 +45,8 @@ async def main():
         run_source_end_dates_ind = True,
         run_combined_indicators = True,
         run_master_score = True,
-        run_master_final_combined = True
-
-
+        run_master_final_combined = True,
+        run_watch_realised_close = True,
         
     )
 

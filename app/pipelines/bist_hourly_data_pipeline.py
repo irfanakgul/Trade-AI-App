@@ -93,7 +93,7 @@ class BistHourlyDataPipelineFlags:
     run_master_score: bool = True
     run_watch_realised_close:bool = True
     run_master_final_combined:bool = True
-    run_master_final_combined:bool = True
+    run_watch_realised_close:bool = True
 
 
 def _build_provider(name: str):
