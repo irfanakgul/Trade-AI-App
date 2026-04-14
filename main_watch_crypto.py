@@ -37,6 +37,7 @@ async def main():
         signal_open_minute=0,
         signal_close_hour=10,
         signal_close_minute=45,
+        top_n = 10
     )
 
 

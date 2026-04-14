@@ -17,19 +17,19 @@ jobs:
 
   - name: ams_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "19:00"
+    at: "19:30"
     cmd: ".venv/bin/python -u main_ams_hourly_data.py"
     lock: "ams_hourly_lock"
 
   - name: nasdaq_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "23:30"
+    at: "23:45"
     cmd: ".venv/bin/python -u main_nasdaq_hourly_data.py"
     lock: "nasdaq_hourly_lock"
 
   - name: nyse_hourly
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "23:55"
+    at: "23:59"
     cmd: ".venv/bin/python -u main_nyse_hourly_data.py"
     lock: "nyse_hourly_lock"
 

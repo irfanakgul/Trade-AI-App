@@ -3200,7 +3200,7 @@ class PostgresRepository:
             WHERE "{exchange_col}" = :exchange
             AND "RANK" <= :top_n
         '''
-
+        
         if where_sql:
             query += f'\n  AND ({where_sql})'
 
@@ -3211,7 +3211,7 @@ class PostgresRepository:
                 text(query),
                 {"exchange": exchange, "top_n": top_n},
             ).fetchall()
-
+    
         return [r[0] for r in rows if r[0]]
 
     def truncate_table(

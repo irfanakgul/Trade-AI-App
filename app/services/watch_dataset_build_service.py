@@ -109,6 +109,7 @@ class WatchDatasetBuildService:
             where_sql=source_where_sql,
             top_n = top_n
         )
+        print(symbols)
 
         print(
             f"[{self.cfg.job_name}] started | exchange={exchange} | "

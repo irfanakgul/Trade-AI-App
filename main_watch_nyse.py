@@ -36,8 +36,8 @@ async def main():
         signal_open_minute=0,
         signal_close_hour=15,
         signal_close_minute=45,
+        top_n = 10
     )
-
 
 if __name__ == "__main__":
     try:

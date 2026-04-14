@@ -355,11 +355,13 @@ class MasterScoreService:
         rsi = self._to_float(df["RSI"])
         rsi_ma = pd.to_numeric(df["RSI_MA"], errors="coerce")
 
+        status = pd.to_numeric(df["RSI_STATUS"], errors="coerce").fillna(0)
+        days = pd.to_numeric(df["RSI_CROSS_DAYS_AGO"], errors="coerce").fillna(0)
+
         score1 = np.where(rsi > rsi_ma, 70, 0)
 
-        days = df["RSI_CROSS_DAYS_AGO"]
         score2 = np.where(
-            (df["RSI_STATUS"] == 1) & (days <= params["rsi_cross_max_days"]),
+            (status == 1) & (days <= params["rsi_cross_max_days"]),
             np.maximum(0, 15 - days),
             0
         )
@@ -367,22 +369,40 @@ class MasterScoreService:
         score3 = np.where((rsi >= 30) & (rsi <= 70), 15, 0)
 
         return np.clip(score1 + score2 + score3, 0, 100)
-
+    
+    
     def _calc_ema_new(self, df: pd.DataFrame) -> np.ndarray:
+        status_5_20 = pd.to_numeric(df["EMA_STATUS_5_20"], errors="coerce").fillna(0)
+        cross_5_20 = pd.to_numeric(df["EMA_CROSS_5_20"], errors="coerce").fillna(0)
+        days_5_20 = pd.to_numeric(df["EMA_DAYS_SINCE_CROSS_5_20"], errors="coerce").fillna(0)
+
+        status_3_20 = pd.to_numeric(df["EMA_STATUS_3_20"], errors="coerce").fillna(0)
+        cross_3_20 = pd.to_numeric(df["EMA_CROSS_3_20"], errors="coerce").fillna(0)
+        days_3_20 = pd.to_numeric(df["EMA_DAYS_SINCE_CROSS_3_20"], errors="coerce").fillna(0)
+
+        status_3_14 = pd.to_numeric(df["EMA_STATUS_3_14"], errors="coerce").fillna(0)
+        cross_3_14 = pd.to_numeric(df["EMA_CROSS_3_14"], errors="coerce").fillna(0)
+        days_3_14 = pd.to_numeric(df["EMA_DAYS_SINCE_CROSS_3_14"], errors="coerce").fillna(0)
+
         def ema_score(status, cross, days):
+            print(
+                type(status.iloc[0]),
+                type(cross.iloc[0]),
+                type(days.iloc[0])
+            )
             return np.where(
                 (status == 1) & (cross == 1),
                 np.maximum(0, 3 - (days / 10)),
-                0
+                0.0
             )
 
         total = (
-            ema_score(df["EMA_STATUS_5_20"], df["EMA_CROSS_5_20"], df["EMA_DAYS_SINCE_CROSS_5_20"]) +
-            ema_score(df["EMA_STATUS_3_20"], df["EMA_CROSS_3_20"], df["EMA_DAYS_SINCE_CROSS_3_20"]) +
-            ema_score(df["EMA_STATUS_3_14"], df["EMA_CROSS_3_14"], df["EMA_DAYS_SINCE_CROSS_3_14"])
+            ema_score(status_5_20, cross_5_20, days_5_20) +
+            ema_score(status_3_20, cross_3_20, days_3_20) +
+            ema_score(status_3_14, cross_3_14, days_3_14)
         )
 
-        return np.clip((total / 9) * 100, 0, 100)
+        return np.clip((total / 9.0) * 100.0, 0.0, 100.0)
 
     def _calc_volume_new(self, df: pd.DataFrame) -> np.ndarray:
         vol_last = self._to_float(df["VOL_LASTDAY"])
