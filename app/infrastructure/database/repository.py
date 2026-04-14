@@ -3192,19 +3192,25 @@ class PostgresRepository:
         symbol_col: str = "SYMBOL",
         exchange_col: str = "EXCHANGE",
         where_sql: str | None = None,
+        top_n: int = 10,
     ) -> List[str]:
         query = f'''
             SELECT DISTINCT "{symbol_col}"
             FROM {source_schema}."{source_table}"
             WHERE "{exchange_col}" = :exchange
+            AND "RANK" <= :top_n
         '''
+
         if where_sql:
-            query += f"\n  AND ({where_sql})"
+            query += f'\n  AND ({where_sql})'
 
         query += f'\nORDER BY "{symbol_col}";'
 
         with self.engine.begin() as conn:
-            rows = conn.execute(text(query), {"exchange": exchange}).fetchall()
+            rows = conn.execute(
+                text(query),
+                {"exchange": exchange, "top_n": top_n},
+            ).fetchall()
 
         return [r[0] for r in rows if r[0]]
 

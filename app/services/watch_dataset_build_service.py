@@ -40,6 +40,7 @@ class WatchDatasetBuildConfig:
     # provider mevcut implementasyonda start/end aliyor ama get_hist n_bars ile calisiyor.
     # bu nedenle service sadece "today UTC" window'unu filtreletiyor.
     batch_insert_size: int = 5000
+    top_n:int = 10
 
 
 
@@ -83,6 +84,7 @@ class WatchDatasetBuildService:
         max_retries: int | None = None,
         retry_wait_seconds: int | None = None,
         batch_insert_size: int | None = None,
+        top_n: int | None = None,
     ) -> dict:
         exchange = (exchange or self.cfg.exchange).upper().strip()
         source_schema = source_schema or self.cfg.source_schema
@@ -96,6 +98,7 @@ class WatchDatasetBuildService:
         max_retries = max_retries or self.cfg.max_retries
         retry_wait_seconds = retry_wait_seconds or self.cfg.retry_wait_seconds
         batch_insert_size = batch_insert_size or self.cfg.batch_insert_size
+        top_n = top_n if top_n is not None else self.cfg.top_n
 
         symbols = self.repo.get_symbols_from_table(
             source_schema=source_schema,
@@ -104,6 +107,7 @@ class WatchDatasetBuildService:
             symbol_col=source_symbol_col,
             exchange_col=source_exchange_col,
             where_sql=source_where_sql,
+            top_n = top_n
         )
 
         print(
