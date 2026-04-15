@@ -33,6 +33,8 @@ async def run_watch_pipeline(
     signal_open_minute: int,
     signal_close_hour: int,
     signal_close_minute: int,
+    top_n: int | None = None,
+    
 ):
     exchange = exchange.upper().strip()
     exc_name = exc_name.lower().strip()
@@ -49,20 +51,21 @@ async def run_watch_pipeline(
         print(f"[WATCH-INGESTION] {exchange} started...")
 
         svc = WatchDatasetBuildService(
-            repo=repo,
-            cfg=WatchDatasetBuildConfig(
-                job_name=f"watch_{exc_name}_pipeline",
-                exchange=exchange,
-                source_schema="gold",
-                source_table=f"{exc_name}_evaluation_master_score",
-                source_where_sql=None,
-                target_schema="prod",
-                target_table=f"{exc_name}_watch_dataset",
-                max_retries=3,
-                retry_wait_seconds=3,
-                tv_n_bars=1000,
-            ),
-        )
+        repo=repo,
+        cfg=WatchDatasetBuildConfig(
+            job_name=f"watch_{exc_name}_pipeline",
+            exchange=exchange,
+            source_schema="gold",
+            source_table=f"{exc_name}_evaluation_master_score",
+            source_where_sql=None,
+            target_schema="prod",
+            target_table=f"{exc_name}_watch_dataset",
+            max_retries=3,
+            retry_wait_seconds=3,
+            tv_n_bars=1000,
+            top_n=top_n,
+        ),
+    )
 
         result = await svc.run(exchange=exchange)
 
