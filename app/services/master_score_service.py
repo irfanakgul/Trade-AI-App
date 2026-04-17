@@ -66,6 +66,8 @@ class MasterScoreServiceConfig:
     input_table: str = ""
     output_schema: str = ""
     output_table: str = ""
+    days_after_poc_input_schema: str = ""
+    days_after_poc_input_table: str = ""
     truncate_before_load: bool = True
     created_at: Optional[datetime] = None
     weights: MasterScoreWeights = field(default_factory=MasterScoreWeights)
@@ -121,6 +123,8 @@ class MasterScoreService:
         telegram_title: Optional[str] = None,
         log_schema: Optional[str] = None,
         log_table: Optional[str] = None,
+        days_after_poc_input_schema: Optional[str] = None,
+        days_after_poc_input_table: Optional[str] = None,
     ) -> pd.DataFrame:
         params = self._resolve_run_params(
             exchange=exchange,
@@ -154,6 +158,8 @@ class MasterScoreService:
             telegram_title=telegram_title,
             log_schema=log_schema,
             log_table=log_table,
+            days_after_poc_input_schema=days_after_poc_input_schema,
+            days_after_poc_input_table=days_after_poc_input_table,
         )
 
         df = self.repo.get_table_as_dataframe(
@@ -176,7 +182,8 @@ class MasterScoreService:
         scored_df = self._calculate_scores(df, params)
         triage_df = self._calculate_triage_selection(scored_df, params)
         ranked_df = self._add_rank_column(triage_df)
-        output_df = self._format_output_columns(ranked_df)
+        days_df = self._add_days_after_poc_column(ranked_df, params)
+        output_df = self._format_output_columns(days_df)
 
         self.repo.insert_dataframe(
             df=output_df,
@@ -184,15 +191,11 @@ class MasterScoreService:
             table_name=params["output_table"],
         )
 
-        log_df = self._build_log_dataframe(output_df, params)
-        if not log_df.empty:
-            self.repo.insert_dataframe(
-                df=log_df,
-                schema_name=params["log_schema"],
-                table_name=params["log_table"],
-            )
-
-        telegram_text = self._build_telegram_text(output_df, params["exchange"],params['top_n'])
+        telegram_text = self._build_telegram_text(
+            output_df,
+            params["exchange"],
+            params["top_n"],
+        )
         print(telegram_text)
 
         if params["send_telegram"] and not output_df.empty:
@@ -247,6 +250,16 @@ class MasterScoreService:
 
             "log_schema": kwargs["log_schema"] if kwargs["log_schema"] is not None else lg.schema,
             "log_table": kwargs["log_table"] if kwargs["log_table"] is not None else lg.table,
+                        "days_after_poc_input_schema": (
+                kwargs["days_after_poc_input_schema"]
+                if kwargs["days_after_poc_input_schema"] is not None
+                else self.cfg.days_after_poc_input_schema
+            ),
+            "days_after_poc_input_table": (
+                kwargs["days_after_poc_input_table"]
+                if kwargs["days_after_poc_input_table"] is not None
+                else self.cfg.days_after_poc_input_table
+            ),
         }
 
     # ============================================================
@@ -385,11 +398,7 @@ class MasterScoreService:
         days_3_14 = pd.to_numeric(df["EMA_DAYS_SINCE_CROSS_3_14"], errors="coerce").fillna(0)
 
         def ema_score(status, cross, days):
-            print(
-                type(status.iloc[0]),
-                type(cross.iloc[0]),
-                type(days.iloc[0])
-            )
+            
             return np.where(
                 (status == 1) & (cross == 1),
                 np.maximum(0, 3 - (days / 10)),
@@ -662,6 +671,69 @@ class MasterScoreService:
         df["RANK"] = range(1, len(df) + 1)
 
         return df
+    
+    def _add_days_after_poc_column(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
+        if df.empty:
+            return df
+
+        out = df.copy()
+
+        daily_df = self.repo.get_table_as_dataframe(
+            schema_name=params["days_after_poc_input_schema"],
+            table_name=params["days_after_poc_input_table"],
+            exchange=params["exchange"],
+        )
+
+        if daily_df.empty:
+            out["DAYS_AFTER_POC"] = 0
+            return out
+
+        daily_df = daily_df.copy()
+
+        if "TIMESTAMP" not in daily_df.columns or "CLOSE" not in daily_df.columns or "SYMBOL" not in daily_df.columns:
+            out["DAYS_AFTER_POC"] = 0
+            return out
+
+        daily_df["TIMESTAMP"] = pd.to_datetime(daily_df["TIMESTAMP"], errors="coerce")
+        daily_df["CLOSE"] = pd.to_numeric(daily_df["CLOSE"], errors="coerce")
+
+        daily_df = daily_df.dropna(subset=["TIMESTAMP", "CLOSE", "SYMBOL"]).copy()
+        daily_df = daily_df.sort_values(["SYMBOL", "TIMESTAMP"], ascending=[True, False])
+
+        out["AVG_POC_NUM"] = (
+            out["AVG_POC"]
+            .astype(str)
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+            .astype(float)
+        )
+
+        symbol_groups = {
+            symbol: grp["CLOSE"].tolist()
+            for symbol, grp in daily_df.groupby("SYMBOL", sort=False)
+        }
+
+        days_after_list = []
+
+        for row in out.itertuples(index=False):
+            symbol = row.SYMBOL
+            avg_poc = row.AVG_POC_NUM
+
+            closes = symbol_groups.get(symbol, [])
+
+            count_days = 0
+            for close_val in closes:
+                if pd.notna(close_val) and close_val >= avg_poc:
+                    count_days += 1
+                else:
+                    break
+
+            days_after_list.append(count_days)
+
+        out["DAYS_AFTER_POC"] = days_after_list
+        out = out.drop(columns=["AVG_POC_NUM"])
+
+        return out
     # ============================================================
     # OUTPUT / LOG / TELEGRAM
     # ============================================================
@@ -678,6 +750,7 @@ class MasterScoreService:
             "RANK",
             "VALID_CLUSTER_COUNT",
             "AVG_POC",
+            "DAYS_AFTER_POC",
             "ENTRY_PRICE",
             "STOP_LOSS",
             "TARGET_PRICE",

@@ -638,6 +638,8 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             input_table=f"crypto_master_combined_indicators",
             output_schema="gold",
             output_table=f"crypto_evaluation_master_score",
+            days_after_poc_input_schema="silver",
+            days_after_poc_input_table="converted_daily_dataset_crypto",
             stop_loss_perc=3.0,
             entry_markup_perc=0.5,
             top_n=10,

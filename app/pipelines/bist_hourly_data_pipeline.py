@@ -643,12 +643,15 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             input_table=f"bist_master_combined_indicators",
             output_schema="gold",
             output_table=f"bist_evaluation_master_score",
+            days_after_poc_input_schema="silver",
+            days_after_poc_input_table="converted_daily_dataset_bist",
             stop_loss_perc=3.0,
             entry_markup_perc=0.5,
             top_n=10,
             created_at=run_ts,
             send_telegram=True,
             telegram_title=f"{exchange} TOP 10",
+            
 
         )
 
