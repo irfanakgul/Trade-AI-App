@@ -629,12 +629,17 @@ async def run_nasdaq_hourly_data_pipeline(repo, flags: NasdaqHourlyDataPipelineF
             input_table=f"nasdaq_master_combined_indicators",
             output_schema="gold",
             output_table=f"nasdaq_evaluation_master_score",
+            days_after_poc_input_schema="silver",
+            days_after_poc_input_table="converted_daily_dataset_nasdaq",
             stop_loss_perc=3.0,
             entry_markup_perc=0.5,
             top_n=10,
             created_at=run_ts,
             send_telegram=True,
             telegram_title=f"{exchange} TOP 10",
+            rank_master_score_min=50,
+            rank_days_after_poc_max=8,
+            rank_default_value=99999,
 
         )
 

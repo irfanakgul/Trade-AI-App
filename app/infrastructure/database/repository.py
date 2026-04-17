@@ -3193,6 +3193,8 @@ class PostgresRepository:
         exchange_col: str = "EXCHANGE",
         where_sql: str | None = None,
         top_n: int = 10,
+ 
+
     ) -> List[str]:
         query = f'''
             SELECT DISTINCT "{symbol_col}"
@@ -3558,9 +3560,9 @@ class PostgresRepository:
             return result.rowcount if result.rowcount is not None else 0
         
 
-# ======================
-# final master combined
-# ======================
+    # ======================
+    # final master combined
+    # ======================
     def build_master_final_combined(
         self,
         exchange: str,
@@ -3682,6 +3684,7 @@ class PostgresRepository:
             "RANK",
             "VALID_CLUSTER_COUNT",
             "AVG_POC",
+            "DAYS_AFTER_POC",
             "STOP_LOSS",
             "TARGET_PRICE",
             "STOP_LOSS_PERC",
@@ -3787,6 +3790,7 @@ class PostgresRepository:
                 e."RANK" AS "RANK",
                 e."VALID_CLUSTER_COUNT" AS "VALID_CLUSTER_COUNT",
                 e."AVG_POC" AS "AVG_POC",
+                e."DAYS_AFTER_POC" AS "DAYS_AFTER_POC",
                 e."STOP_LOSS" AS "STOP_LOSS",
                 e."TARGET_PRICE" AS "TARGET_PRICE",
                 e."STOP_LOSS_PERC" AS "STOP_LOSS_PERC",
