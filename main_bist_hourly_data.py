@@ -50,18 +50,18 @@ async def main():
 
     await run_bist_hourly_data_pipeline(repo, flags,'BIST')
 
-# asyncio.run(main())
+asyncio.run(main())
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
-            telegram_send_message(
-                title="PIPELINE run",
-                text="✅ BIST pipeline has been completed succesfuly")
-    except Exception as e:
-        print(e)
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
-            telegram_send_message(
-                title="PIPELINE ERROR!",
-                text=f"❌ BIST pipeline stopt with error!\nERROR: {e}")
+# if __name__ == "__main__":
+#     try:
+#         asyncio.run(main())
+#         if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+#             telegram_send_message(
+#                 title="PIPELINE run",
+#                 text="✅ BIST pipeline has been completed succesfuly")
+#     except Exception as e:
+#         print(e)
+#         if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+#             telegram_send_message(
+#                 title="PIPELINE ERROR!",
+#                 text=f"❌ BIST pipeline stopt with error!\nERROR: {e}")

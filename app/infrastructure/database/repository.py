@@ -3193,6 +3193,8 @@ class PostgresRepository:
         exchange_col: str = "EXCHANGE",
         where_sql: str | None = None,
         top_n: int = 10,
+ 
+
     ) -> List[str]:
         query = f'''
             SELECT DISTINCT "{symbol_col}"

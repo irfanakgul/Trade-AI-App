@@ -41,19 +41,19 @@ async def main():
     )
 
 
-asyncio.run(main())
-# if __name__ == "__main__":
-#     try:
-#         asyncio.run(main())
-#         if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
-#             telegram_send_message(
-#                 title="WATCH PIPELINE run",
-#                 text="✅ BIST watch pipeline has been completed succesfuly",
-#             )
-#     except Exception as e:
-#         print(e)
-#         if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
-#             telegram_send_message(
-#                 title="WATCH PIPELINE ERROR!",
-#                 text=f"❌ BIST watch pipeline stopt with error!\nERROR: {e}",
-#             )
+# asyncio.run(main())
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+        if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
+            telegram_send_message(
+                title="WATCH PIPELINE run",
+                text="✅ BIST watch pipeline has been completed succesfuly",
+            )
+    except Exception as e:
+        print(e)
+        if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
+            telegram_send_message(
+                title="WATCH PIPELINE ERROR!",
+                text=f"❌ BIST watch pipeline stopt with error!\nERROR: {e}",
+            )

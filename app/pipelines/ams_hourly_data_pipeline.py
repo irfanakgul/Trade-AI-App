@@ -641,6 +641,9 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
             created_at=run_ts,
             send_telegram=True,
             telegram_title=f"AMS TOP 10",
+            rank_master_score_min=50,
+            rank_days_after_poc_max=8,
+            rank_default_value=99999,
 
         )
 

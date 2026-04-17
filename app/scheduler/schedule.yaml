@@ -48,7 +48,7 @@ jobs:
 # watch pipelines
   - name: watch_bist_pp
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "11:01"
+    at: "10:01"
     cmd: ".venv/bin/python -u main_watch_bist.py"
     lock: "watch_bist_pp_lock"
     
@@ -60,7 +60,7 @@ jobs:
 
   - name: watch_nasdaq_pp
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "15:45"
+    at: "15:46"
     cmd: ".venv/bin/python -u main_watch_nasdaq.py"
     lock: "watch_nasdaq_pp_lock"
 

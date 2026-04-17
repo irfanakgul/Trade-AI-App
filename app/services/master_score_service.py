@@ -45,19 +45,16 @@ class TradeLevelConfig:
     entry_markup_perc: float = 0.5
     stop_loss_perc: float = 3.0
     top_n: int = 10
-
+@dataclass
+class RankConfig:
+    master_score_min: float = 50.0
+    days_after_poc_max: int = 8
+    fallback_rank: int = 99999
 
 @dataclass
 class TelegramConfig:
     send: bool = False
     title: str = "TOP 10"
-
-
-@dataclass
-class LogConfig:
-    schema: str = "logs"
-    table: str = "log_all_evaluation"
-
 
 @dataclass
 class MasterScoreServiceConfig:
@@ -74,7 +71,7 @@ class MasterScoreServiceConfig:
     thresholds: MasterScoreThresholds = field(default_factory=MasterScoreThresholds)
     trade: TradeLevelConfig = field(default_factory=TradeLevelConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
-    log: LogConfig = field(default_factory=LogConfig)
+    rank: RankConfig = field(default_factory=RankConfig)
 
 
 # ============================================================
@@ -100,6 +97,9 @@ class MasterScoreService:
         is_truncate_scope: Optional[bool] = None,
         created_at: Optional[datetime] = None,
         top_n: Optional[int] = None,
+        rank_master_score_min: Optional[float] = None,
+        rank_days_after_poc_max: Optional[int] = None,
+        rank_default_value: Optional[int] = None,
         entry_markup_perc: Optional[float] = None,
         stop_loss_perc: Optional[float] = None,
         buy_min: Optional[float] = None,
@@ -135,6 +135,9 @@ class MasterScoreService:
             is_truncate_scope=is_truncate_scope,
             created_at=created_at,
             top_n=top_n,
+            rank_master_score_min=rank_master_score_min,
+            rank_days_after_poc_max=rank_days_after_poc_max,
+            rank_default_value=rank_default_value,
             entry_markup_perc=entry_markup_perc,
             stop_loss_perc=stop_loss_perc,
             buy_min=buy_min,
@@ -181,9 +184,9 @@ class MasterScoreService:
         df = self._prepare_numeric_columns(df)
         scored_df = self._calculate_scores(df, params)
         triage_df = self._calculate_triage_selection(scored_df, params)
-        ranked_df = self._add_rank_column(triage_df)
-        days_df = self._add_days_after_poc_column(ranked_df, params)
-        output_df = self._format_output_columns(days_df)
+        days_df = self._add_days_after_poc_column(triage_df, params)
+        ranked_df = self._add_rank_column(days_df, params)
+        output_df = self._format_output_columns(ranked_df)
 
         self.repo.insert_dataframe(
             df=output_df,
@@ -211,7 +214,6 @@ class MasterScoreService:
         t = self.cfg.thresholds
         tr = self.cfg.trade
         tg = self.cfg.telegram
-        lg = self.cfg.log
 
         return {
             "exchange": kwargs["exchange"] if kwargs["exchange"] is not None else self.cfg.exchange,
@@ -223,6 +225,9 @@ class MasterScoreService:
             "created_at": kwargs["created_at"] if kwargs["created_at"] is not None else (self.cfg.created_at or datetime.now()),
 
             "top_n": kwargs["top_n"] if kwargs["top_n"] is not None else tr.top_n,
+            "rank_master_score_min": kwargs["rank_master_score_min"] if kwargs["rank_master_score_min"] is not None else 50.0,
+            "rank_days_after_poc_max": kwargs["rank_days_after_poc_max"] if kwargs["rank_days_after_poc_max"] is not None else 8,
+            "rank_default_value": kwargs["rank_default_value"] if kwargs["rank_default_value"] is not None else 99999,
             "entry_markup_perc": kwargs["entry_markup_perc"] if kwargs["entry_markup_perc"] is not None else tr.entry_markup_perc,
             "stop_loss_perc": kwargs["stop_loss_perc"] if kwargs["stop_loss_perc"] is not None else tr.stop_loss_perc,
 
@@ -248,8 +253,7 @@ class MasterScoreService:
             "send_telegram": kwargs["send_telegram"] if kwargs["send_telegram"] is not None else tg.send,
             "telegram_title": kwargs["telegram_title"] if kwargs["telegram_title"] is not None else tg.title,
 
-            "log_schema": kwargs["log_schema"] if kwargs["log_schema"] is not None else lg.schema,
-            "log_table": kwargs["log_table"] if kwargs["log_table"] is not None else lg.table,
+
                         "days_after_poc_input_schema": (
                 kwargs["days_after_poc_input_schema"]
                 if kwargs["days_after_poc_input_schema"] is not None
@@ -662,15 +666,28 @@ class MasterScoreService:
         return result_df
     
     
-    def _add_rank_column(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _add_rank_column(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
         if df.empty:
             return df
 
-        df = df.copy()
-        df = df.sort_values("MASTER_SCORE", ascending=False).reset_index(drop=True)
-        df["RANK"] = range(1, len(df) + 1)
+        out = df.copy()
+        out["RANK"] = params["rank_default_value"]
 
-        return df
+        master_score = pd.to_numeric(out["MASTER_SCORE"], errors="coerce")
+        days_after_poc = pd.to_numeric(out["DAYS_AFTER_POC"], errors="coerce")
+
+        eligible_mask = (
+            (master_score >= params["rank_master_score_min"]) &
+            (days_after_poc <= params["rank_days_after_poc_max"])
+        )
+
+        eligible_df = out.loc[eligible_mask].copy()
+        eligible_df = eligible_df.sort_values("MASTER_SCORE", ascending=False).reset_index()
+        eligible_df["RANK"] = range(1, len(eligible_df) + 1)
+
+        out.loc[eligible_df["index"], "RANK"] = eligible_df["RANK"].values
+
+        return out
     
     def _add_days_after_poc_column(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
         if df.empty:
@@ -728,7 +745,7 @@ class MasterScoreService:
                 else:
                     break
 
-            days_after_list.append(count_days)
+            days_after_list.append(max(count_days - 1, 0))
 
         out["DAYS_AFTER_POC"] = days_after_list
         out = out.drop(columns=["AVG_POC_NUM"])
@@ -765,50 +782,14 @@ class MasterScoreService:
 
         return df[existing + remaining]
 
-    def _build_log_dataframe(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
-        if df.empty:
-            return pd.DataFrame()
-
-        log_df = df.copy()
-        log_df["SOURCE_TABLE"] = f'{params["input_schema"]}.{params["input_table"]}'
-        log_df["TARGET_TABLE"] = f'{params["output_schema"]}.{params["output_table"]}'
-        log_df["LOG_CREATED_AT"] = params["created_at"]
-
-        ordered_cols = [
-            "EXCHANGE",
-            "SYMBOL",
-            "TRIAGE_ENTRY_DAY",
-            "MASTER_SCORE",
-            "RANK",
-            "VALID_CLUSTER_COUNT",
-            "AVG_POC",
-            "ENTRY_PRICE",
-            "STOP_LOSS",
-            "TARGET_PRICE",
-            "STOP_LOSS_PERC",
-            "TARGET_PERC",
-            "CREATED_DAY",
-            "CREATED_AT",
-            "SOURCE_TABLE",
-            "TARGET_TABLE",
-            "LOG_CREATED_AT",
-        ]
-
-        existing = [c for c in ordered_cols if c in log_df.columns]
-        remaining = [c for c in log_df.columns if c not in existing]
-
-        return log_df[existing + remaining]
 
     def _build_telegram_text(self, df: pd.DataFrame, exchange: str,top_n:int) -> str:
         if df.empty:
             return f"[MASTER-SCORE] {exchange} | No candidates found."
 
         lines: List[str] = []
-        df_top_n = df.sort_values(by="MASTER_SCORE", ascending=False).head(top_n)
+        df_top_n = df.sort_values(by="RANK", ascending=True).head(top_n)
         for idx, row in enumerate(df_top_n.itertuples(index=False), start=1):
-            stop_pct_num = str(row.STOP_LOSS_PERC).replace("%", "")
-            target_pct_num = str(row.TARGET_PERC).replace("%", "")
-
             lines.append(
                 f"{idx}) {row.EXCHANGE}:{row.SYMBOL} | "
                 f"MasterScore: {row.MASTER_SCORE} | "
