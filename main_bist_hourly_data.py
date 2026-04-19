@@ -19,23 +19,22 @@ async def main():
     repo = PostgresRepository(engine)
 
     flags = BistHourlyDataPipelineFlags(
-        ingest=False,
 
+        #=================================================================#
+        # DATA INGESTION
+        #=================================================================#
+        ingest=True,
+        sync_archive_to_working = True,
+        trim_history = True,
+        build_focus_dataset= True,
+        run_dq = True,
 
-         # flags SYNC
-        sync_archive_to_working = False,
-        trim_history = False,
-        build_focus_dataset=False,
-        run_dq = False,
-        
-        
         #=================================================================#
         # INDICATOR FLAGS
         #=================================================================#
-
-        bar_status=False,
-        run_frvp=False,
-        run_convert_daily = False,
+        bar_status=True,
+        run_frvp=True,
+        run_convert_daily = True,
         run_ema_ind = True,
         run_vwap_ind = True,
         run_rsi_ind = True,
@@ -43,22 +42,26 @@ async def main():
         run_pivot_ind = True,
         run_source_end_dates_ind = True,
         run_combined_indicators = True,
+        run_master_score = True,
+        run_master_final_combined = True,
+        run_watch_realised_close = True,
 
-    )
+        )
 
     await run_bist_hourly_data_pipeline(repo, flags,'BIST')
 
-# asyncio.run(main())
+asyncio.run(main())
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
-            telegram_send_message(
-                title="PIPELINE run",
-                text="✅ BIST pipeline has been completed succesfuly")
-    except Exception as e:
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
-            telegram_send_message(
-                title="PIPELINE ERROR!",
-                text=f"❌ BIST pipeline stopt with error!\nERROR: {e}")
+# if __name__ == "__main__":
+#     try:
+#         asyncio.run(main())
+#         if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+#             telegram_send_message(
+#                 title="PIPELINE run",
+#                 text="✅ BIST pipeline has been completed succesfuly")
+#     except Exception as e:
+#         print(e)
+#         if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
+#             telegram_send_message(
+#                 title="PIPELINE ERROR!",
+#                 text=f"❌ BIST pipeline stopt with error!\nERROR: {e}")

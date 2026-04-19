@@ -30,10 +30,11 @@ from app.services.ind_bar_status_service import IndBarStatusService # type: igno
 from app.services.ind_rsi_focus_service import IndRsiFocusService # type: ignore # type: ignore
 from app.services.ind_mfi_focus_service import IndMfiFocusService # type: ignore
 from app.services.ind_pivot_focus_service import IndPivotFocusService # type: ignore
-from app.services.ind_end_dates_service import IndEndDatesService
+from app.services.ind_end_dates_service import IndEndDatesService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 
-
+from app.services.master_score_service import MasterScoreService # type: ignore
+from app.services.watch_signal_realised_close_service import WatchSignalRealisedCloseService # type: ignore
 
 @dataclass(frozen=True)
 class BistHourlyDataPipelineFlags:
@@ -86,6 +87,14 @@ class BistHourlyDataPipelineFlags:
     run_source_end_dates_ind:bool = True
     run_combined_indicators:bool = True
 
+    #-------------------------------------
+    # indicator flags
+    #-------------------------------------
+    run_master_score: bool = True
+    run_watch_realised_close:bool = True
+    run_master_final_combined:bool = True
+    run_watch_realised_close:bool = True
+
 
 def _build_provider(name: str):
     name = name.lower().strip()
@@ -109,10 +118,8 @@ def _build_provider(name: str):
 
 async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags,exchange):
     print(
-        "\n►►►►►►►►►►►►[PIPELINE BIST] started ◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎"
-        + datetime.now().strftime("%d-%m-%Y %H:%M")
-        + "\n"
-    )
+        "\n►►►►►►►►►►►►[PIPELINE BIST] started ◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎◀︎\n"
+        + datetime.now().strftime("%d-%m-%Y %H:%M"))
 
     # ----------------------------------------------------------
     # 1) INGESTION
@@ -170,6 +177,26 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
     else:
         print("❌ [INGESTION] BIST skipped!")
 
+    #---------------------------------
+    # WATCH SIGNAL REALISED CLOSE UPDATE
+    #---------------------------------
+    if flags.run_watch_realised_close:
+        print(f"[WATCH-REALISED] started ({exchange})...")
+
+        svc = WatchSignalRealisedCloseService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema="raw",
+            source_table="bist_hourly_archive",
+            target_schema="prod",
+            target_table="watch_signal_check_bist",
+            log_schema="logs",
+            log_table="watch_signal_check_all",
+        )
+
+    else:
+        print("❌ [WATCH-REALISED] skipped!")
+        
     # ----------------------------------------------------------
     # 2) SYNC raw -> bronze/working
     # ----------------------------------------------------------
@@ -232,7 +259,7 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             ts_col="TS",
             high_col="HIGH",
             exchange=exchange,
-            min_trading_days=15,
+            min_trading_days=20,
         )
 
         #adding elemination reason
@@ -240,7 +267,7 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             exchange=exchange,
             compare_schema = 'silver',
             compare_table='indicators_bist_focus_dataset',
-            reason='Highest HIGH Value falled in last 15 days',
+            reason='Highest HIGH Value falled in last 20 days',
             main_symbol_schema = 'prod',
             main_symbol_table = 'FOCUS_SYMBOLS_ALL',
             drop_and_recreate = False
@@ -359,18 +386,18 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             bs_target_table='IND_BAR_STATUS',
             is_truncate_scope=True,
         )
-        # adding elemination reason
-        repo.update_focus_symbol_scope_filtered(
-            exchange=exchange,
-            compare_schema = 'silver',
-            compare_table='IND_BAR_STATUS',
-            comp_col='BAR_STATUS',
-            comp_value='GREEN', # green olmayanlari scope disi birakacak!
-            reason='bar status red | close is lower than open',
-            main_symbol_schema = 'prod',
-            main_symbol_table = 'FOCUS_SYMBOLS_ALL',
-            drop_and_recreate = False
-        )
+        # # adding elemination reason
+        # repo.update_focus_symbol_scope_filtered(
+        #     exchange=exchange,
+        #     compare_schema = 'silver',
+        #     compare_table='IND_BAR_STATUS',
+        #     comp_col='BAR_STATUS',
+        #     comp_value='GREEN', # green olmayanlari scope disi birakacak!
+        #     reason='bar status red | close is lower than open',
+        #     main_symbol_schema = 'prod',
+        #     main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+        #     drop_and_recreate = False
+        # )
     else:
         print(f"❌ [IND-BAR_STATUS] bist skipped for exchange={exchange}")
     
@@ -384,7 +411,7 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
         svc = IndFrvPocProfileService(repo=repo)
         svc.run(
             exchange=exchange,
-            periods=["2year", "1year", "6months", "4months"],
+            periods=["2year", "1year", "6months", "3months"],
             frvp_source_schema='silver',
             frvp_source_table='indicators_bist_focus_dataset',
             frvp_target_schema='silver',
@@ -392,18 +419,18 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             cutt_off_date=None
             )
         
-        #adding elemination reason
-        repo.update_focus_symbol_scope_filtered(
-            exchange=exchange,
-            compare_schema = 'silver',
-            compare_table='IND_FRV_POC_PROFILE',
-            comp_col="IN_SCOPE_FOR_EMA_RSI",
-            comp_value='True', # true olmayanlar scope disi kalacak demek unutma!
-            reason='4 poc values are lower than latest close price',
-            main_symbol_schema = 'prod',
-            main_symbol_table = 'FOCUS_SYMBOLS_ALL',
-            drop_and_recreate = False
-        )
+        # #adding elemination reason
+        # repo.update_focus_symbol_scope_filtered(
+        #     exchange=exchange,
+        #     compare_schema = 'silver',
+        #     compare_table='IND_FRV_POC_PROFILE',
+        #     comp_col="IN_SCOPE_FOR_EMA_RSI",
+        #     comp_value='True', # true olmayanlar scope disi kalacak demek unutma!
+        #     reason='4 poc values are lower than latest close price',
+        #     main_symbol_schema = 'prod',
+        #     main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+        #     drop_and_recreate = False
+        # )
     else:
         print(f"❌ [IND-FRVP] bist skipped for exchange={exchange}")
 
@@ -413,7 +440,7 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
     if flags.run_convert_daily:
         print(f"[IND-CONVERT_DAILY] bist started ({exchange})...")
 
-        stats = repo.build_converted_daily_for_ema_rsi_scope(
+        stats = repo.build_converted_daily_for_indicators(
             exchange=exchange,
             interval='hourly',  
             start_trading_days_back=365,
@@ -422,7 +449,7 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             ts_col="TS",
             high_col="HIGH",
             target_schema=flags.converted_schema,
-            target_table=flags.converted_table,#'converted_daily_dataset_bist',
+            target_table=flags.converted_table,
         )
         print(
             f'[IND-CONVERT] Converted-daily built. exchange={stats["exchange"]} '
@@ -465,7 +492,7 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             source_table=flags.target_table,
             target_schema='silver',
             target_table='IND_VWAP_FOCUS',
-            periods=["2year", "1year", "6months", "4months"],
+            periods=["2year", "1year", "6months", "3months"],
             is_truncate_scope=True,
         )
     else:
@@ -566,7 +593,6 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
     #---------------------------------
     
     if flags.run_combined_indicators:
-        print('in master')
         svc = IndMasterCombinedIndicatorsService(repo=repo)
 
         svc.run(
@@ -586,32 +612,117 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             pivot_table="IND_PIVOT_FOCUS",
         )
 
-        # failed dq symbols will be out of scope
-        if flags.dq_elemination:
-            repo.update_focus_symbol_scope(
-                exchange=exchange,
-                compare_schema='logs',
-                compare_table='dq_check_overview_bist',
-                reason='DQ FAILED',
-                main_symbol_schema = 'prod',
-                main_symbol_table = 'FOCUS_SYMBOLS_ALL',
-                drop_and_recreate = False
-            )
+        # # failed dq symbols will be out of scope
+        # if flags.dq_elemination:
+        #     repo.update_focus_symbol_scope(
+        #         exchange=exchange,
+        #         compare_schema='logs',
+        #         compare_table='dq_check_overview_bist',
+        #         reason='DQ FAILED',
+        #         main_symbol_schema = 'prod',
+        #         main_symbol_table = 'FOCUS_SYMBOLS_ALL',
+        #         drop_and_recreate = False
+        #     )
+
+        
+        print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
+    else:
+        print('❌ [MASTERFILE] skipped!')
+
+    #---------------------------------
+    # MASTER SCORE CALC
+    #---------------------------------
+    if flags.run_master_score:
+        print(f"[MASTER-SCORE] started: ({exchange})...")
+
+        svc = MasterScoreService(repo=repo)
+        run_ts = datetime.now()
+        svc.run(
+            exchange=exchange,
+            input_schema="gold",
+            input_table="bist_master_combined_indicators",
+            output_schema="gold",
+            output_table="bist_evaluation_master_score",
+            days_after_poc_input_schema="silver",
+            days_after_poc_input_table="converted_daily_dataset_bist",
+            stop_loss_perc=3.0,
+            entry_markup_perc=0.5,
+            top_n=10,
+            created_at=run_ts,
+            send_telegram=True,
+            telegram_title=f"{exchange} TOP 10",
+            rank_master_score_min=50,
+            rank_days_after_poc_max=8,
+            rank_default_value=99999,
+        )
+
+
+    else:
+        print(f"❌ [MASTER-SCORE] {exchange} skipped!")
+
+    
+    #---------------------------------
+    # FINAL MASTER COMBINED
+    #---------------------------------
+    if flags.run_master_final_combined:
+        print(f"[MASTER-FINAL] started ({exchange})...")
+        exc_name = 'bist'
+        result = repo.build_master_final_combined(
+            exchange=exchange,
+
+            target_schema="gold",
+            target_table=f"{exc_name}_master_final_combined",
+
+            log_schema="logs",
+            log_table=f"logs_{exc_name}_master_final_combined",
+
+            main_schema="gold",
+            main_table=f"{exc_name}_master_combined_indicators",
+
+            score_schema="gold",
+            score_table=f"{exc_name}_ind_all_scores",
+
+            triage_schema="gold",
+            triage_table=f"{exc_name}_evaluation_master_score",
+        )
 
         # write to gg
         repo.fn_repo_write_to_google_generic(
             schema='gold',
-            table='bist_master_combined_indicators',
-            sheet_name= 'MASTER_IND_BIST',
-            replace_append = os.getenv("MASTERFILE_APPEND_REPLACE"))
-        
+            table=f"{exc_name}_master_final_combined",
+            sheet_name= f'MASTER_IND_{exc_name.upper()}',
+            replace_append = 'replace')
+
         # write to gg
         repo.fn_repo_write_to_google_generic(
             schema='silver',
             table='cloned_focus_symbol_list',
             sheet_name= 'ALL_SYMBOLS_STATUS',
             replace_append = 'replace')
-        
-        print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
+
+        print(
+            f"[MASTER-FINAL] done ({exchange}) "
+            f"master_inserted_rows={result['master_inserted_rows']}"
+        )
     else:
-        print('❌ [MASTERFILE] skipped!')
+        print(f"❌ [MASTER-FINAL] skipped ({exchange})")
+
+    #---------------------------------
+    # WATCH SIGNAL REALISED CLOSE UPDATE
+    #---------------------------------
+    if flags.run_watch_realised_close:
+        print(f"[WATCH-REALISED] started ({exchange})...")
+
+        svc = WatchSignalRealisedCloseService(repo=repo)
+        svc.run(
+            exchange=exchange,
+            source_schema="raw",
+            source_table="bist_hourly_archive",
+            target_schema="prod",
+            target_table="watch_signal_check_bist",
+            log_schema="logs",
+            log_table="watch_signal_check_all",
+        )
+
+    else:
+        print("❌ [WATCH-REALISED] skipped!")

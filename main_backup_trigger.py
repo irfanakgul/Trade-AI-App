@@ -36,8 +36,7 @@ if __name__ == "__main__":
                 title="BACKUP run",
                 text="✅ cloud db has been download into local")
     except Exception as e:
-        if os.getenv("ENV_TELEGRAM_NOTIF")=="False":
+        if os.getenv("ENV_TELEGRAM_NOTIF")=="True":
             telegram_send_message(
-                title="PIPELINE ERROR!",
+                title="BACKUP ERROR!",
                 text=f"❌ cloud db stopt with error!\nERROR: {e}")
-

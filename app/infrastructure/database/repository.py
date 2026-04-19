@@ -543,8 +543,6 @@ class PostgresRepository:
     def delete_ind_frvp_scope(
         self,
         exchange: str,
-        interval: str,
-        periods: List[str],
         frvp_target_schema: str = '',
         frvp_target_table: str = ''
         
@@ -553,11 +551,9 @@ class PostgresRepository:
         q = text(f"""
             DELETE FROM {frvp_target_schema}."{frvp_target_table}"
             WHERE "EXCHANGE" = :exchange
-              AND "INTERVAL" = :interval
-              AND "FRVP_PERIOD_TYPE" = ANY(:periods);
         """)
         with self.engine.begin() as conn:
-            res = conn.execute(q, {"exchange": exchange, "interval": interval, "periods": periods})
+            res = conn.execute(q, {"exchange": exchange})
             return int(res.rowcount or 0)
 
     def insert_ind_frvp_rows(
@@ -1114,10 +1110,10 @@ class PostgresRepository:
             """))
 
 
-    def build_converted_daily_for_ema_rsi_scope(
+    def build_converted_daily_for_indicators(
         self,
         exchange: str,
-        interval: str,  # "1min" or "daily"
+        interval: str,  # "1min" or "daily" or "hourly"
         start_trading_days_back: int,
         source_schema: str,
         source_table: str,
@@ -1125,261 +1121,270 @@ class PostgresRepository:
         high_col: str,
         target_schema: str,
         target_table: str,
-
     ) -> dict:
         exchange = exchange.upper().strip()
         interval = interval.lower().strip()
 
-        # 1) Scope symbols
-        q_syms = text(f"""
-            SELECT DISTINCT "SYMBOL"
+        # 1) Count scope symbols directly from DB
+        q_before = text("""
+            SELECT COUNT(DISTINCT "SYMBOL")
             FROM silver."cloned_focus_symbol_list"
             WHERE "EXCHANGE" = :exchange
             AND "OUT_OF_SCOPE" = false
-            ORDER BY "SYMBOL";
         """)
 
         with self.engine.begin() as conn:
-            syms = [r[0] for r in conn.execute(q_syms, {"exchange": exchange}).fetchall()]
-
-        before_symbols = len(syms)
+            before_symbols = conn.execute(q_before, {"exchange": exchange}).scalar_one()
 
         # Always truncate target
         with self.engine.begin() as conn:
             conn.execute(text(f'TRUNCATE TABLE {target_schema}."{target_table}";'))
 
-        if not syms:
+        if not before_symbols:
             return {
                 "exchange": exchange,
                 "before_symbols": 0,
                 "after_symbols": 0,
                 "after_rows": 0,
-                "target": f'{target_schema}.{target_table}',
+                "target": f"{target_schema}.{target_table}",
             }
 
-        if interval == "daily":
-            # Daily input: keep last N calendar days from each symbol's latest date
-            q = text(f"""
-                WITH scope AS (
-                    SELECT UNNEST(CAST(:symbols AS text[])) AS symbol
-                ),
-                base AS (
+        if interval not in ("daily", "1min", "hourly"):
+            raise ValueError(f"Unsupported interval: {interval} (use '1min/hourly' or 'daily')")
+
+        with self.engine.begin() as conn:
+            # ----------------------------------------------------------
+            # 2) Materialize filtered source once into a TEMP table
+            #    Filter = last N calendar days from each symbol's latest date
+            # ----------------------------------------------------------
+            conn.execute(text("DROP TABLE IF EXISTS tmp_scope_symbols;"))
+            conn.execute(text("DROP TABLE IF EXISTS tmp_filtered_src;"))
+            conn.execute(text("DROP TABLE IF EXISTS tmp_sym_stats;"))
+            conn.execute(text("DROP TABLE IF EXISTS tmp_highest_date;"))
+
+            conn.execute(text("""
+                CREATE TEMP TABLE tmp_scope_symbols ON COMMIT DROP AS
+                SELECT DISTINCT "SYMBOL" AS symbol
+                FROM silver."cloned_focus_symbol_list"
+                WHERE "EXCHANGE" = :exchange
+                AND "OUT_OF_SCOPE" = false;
+            """), {"exchange": exchange})
+
+            conn.execute(text("""
+                CREATE INDEX idx_tmp_scope_symbols_symbol
+                ON tmp_scope_symbols(symbol);
+            """))
+
+            conn.execute(text(f"""
+                CREATE TEMP TABLE tmp_filtered_src ON COMMIT DROP AS
+                WITH base AS (
                     SELECT
                         t."SYMBOL" AS symbol,
                         (t."{ts_col}")::timestamp AS ts,
                         date_trunc('day', (t."{ts_col}")::timestamp) AS day_ts,
                         t."OPEN"::double precision AS open,
-                        t."HIGH"::double precision AS high,
-                        t."LOW"::double precision AS low,
-                        t."CLOSE"::double precision AS close,
-                        t."VOLUME"::double precision AS volume
-                    FROM {source_schema}."{source_table}" t
-                    JOIN scope s ON s.symbol = t."SYMBOL"
-                    WHERE t."{ts_col}" IS NOT NULL
-                    AND t."OPEN" IS NOT NULL
-                    AND t."HIGH" IS NOT NULL
-                    AND t."LOW"  IS NOT NULL
-                    AND t."CLOSE" IS NOT NULL
-                ),
-                symbol_day_bounds AS (
-                    SELECT
-                        symbol,
-                        MAX(day_ts) AS max_day_ts,
-                        (MAX(day_ts) - (:n_days * INTERVAL '1 day')) AS min_keep_day_ts
-                    FROM base
-                    GROUP BY symbol
-                ),
-                filtered AS (
-                    SELECT b.*
-                    FROM base b
-                    JOIN symbol_day_bounds sb
-                    ON sb.symbol = b.symbol
-                    AND b.day_ts >= sb.min_keep_day_ts
-                    AND b.day_ts <= sb.max_day_ts
-                ),
-                sym_stats AS (
-                    SELECT
-                        symbol,
-                        MIN(ts) AS min_date,
-                        MAX(ts) AS max_date,
-                        MAX(high) AS highest_value
-                    FROM filtered
-                    GROUP BY symbol
-                ),
-                highest_date AS (
-                    SELECT f.symbol, MIN(f.ts) AS highest_date
-                    FROM filtered f
-                    JOIN sym_stats s
-                    ON s.symbol = f.symbol
-                    AND f.high = s.highest_value
-                    GROUP BY f.symbol
-                )
-                INSERT INTO {target_schema}."{target_table}" (
-                    "EXCHANGE","SYMBOL","INTERVAL","TIMESTAMP",
-                    "MIN_DATE","MAX_DATE","HIGHEST_VALUE","HIGHEST_DATE",
-                    "OPEN","HIGH","LOW","CLOSE","VOLUME","BAR_COUNT"
-                )
-                SELECT
-                    :exchange AS "EXCHANGE",
-                    f.symbol AS "SYMBOL",
-                    'DAILY' AS "INTERVAL",
-                    f.day_ts AS "TIMESTAMP",
-                    s.min_date AS "MIN_DATE",
-                    s.max_date AS "MAX_DATE",
-                    s.highest_value AS "HIGHEST_VALUE",
-                    h.highest_date AS "HIGHEST_DATE",
-                    f.open AS "OPEN",
-                    f.high AS "HIGH",
-                    f.low  AS "LOW",
-                    f.close AS "CLOSE",
-                    COALESCE(f.volume, 0.0) AS "VOLUME",
-                    0 AS "BAR_COUNT"
-                FROM filtered f
-                JOIN sym_stats s ON s.symbol = f.symbol
-                JOIN highest_date h ON h.symbol = f.symbol
-                ORDER BY f.symbol, f.day_ts;
-            """)
-
-            params = {
-                "exchange": exchange,
-                "symbols": syms,
-                "n_days": int(start_trading_days_back),
-            }
-
-        elif (interval == "1min") or (interval == "hourly"):
-            # Minute/hourly input: aggregate to daily, but filter by last N calendar days
-            q = text(f"""
-                WITH scope AS (
-                    SELECT UNNEST(CAST(:symbols AS text[])) AS symbol
-                ),
-                base AS (
-                    SELECT
-                        t."SYMBOL" AS symbol,
-                        (t."{ts_col}")::timestamp AS ts,
-                        date_trunc('day', (t."{ts_col}")::timestamp) AS day_ts,
-                        t."OPEN"::double precision AS open,
-                        t."HIGH"::double precision AS high,
+                        t."{high_col}"::double precision AS high,
                         t."LOW"::double precision AS low,
                         t."CLOSE"::double precision AS close,
                         COALESCE(t."VOLUME", 0)::double precision AS volume
                     FROM {source_schema}."{source_table}" t
-                    JOIN scope s ON s.symbol = t."SYMBOL"
+                    JOIN tmp_scope_symbols s
+                    ON s.symbol = t."SYMBOL"
                     WHERE t."{ts_col}" IS NOT NULL
                     AND t."OPEN" IS NOT NULL
-                    AND t."HIGH" IS NOT NULL
-                    AND t."LOW"  IS NOT NULL
+                    AND t."{high_col}" IS NOT NULL
+                    AND t."LOW" IS NOT NULL
                     AND t."CLOSE" IS NOT NULL
                 ),
-                symbol_day_bounds AS (
+                symbol_bounds AS (
                     SELECT
                         symbol,
-                        MAX(day_ts) AS max_day_ts,
-                        (MAX(day_ts) - (:n_days * INTERVAL '1 day')) AS min_keep_day_ts
+                        MAX(ts) AS max_ts
                     FROM base
                     GROUP BY symbol
-                ),
-                filtered AS (
-                    SELECT b.*
-                    FROM base b
-                    JOIN symbol_day_bounds sb
-                    ON sb.symbol = b.symbol
-                    AND b.day_ts >= sb.min_keep_day_ts
-                    AND b.day_ts <= sb.max_day_ts
-                ),
-                sym_stats AS (
+                )
+                SELECT b.*
+                FROM base b
+                JOIN symbol_bounds sb
+                ON sb.symbol = b.symbol
+                WHERE b.ts >= (date_trunc('day', sb.max_ts) - (:n_days * INTERVAL '1 day'))
+                AND b.ts <= sb.max_ts;
+            """), {"n_days": int(start_trading_days_back)})
+
+            conn.execute(text("""
+                CREATE INDEX idx_tmp_filtered_src_symbol_day_ts
+                ON tmp_filtered_src(symbol, day_ts, ts);
+            """))
+            conn.execute(text("""
+                CREATE INDEX idx_tmp_filtered_src_symbol_high
+                ON tmp_filtered_src(symbol, high);
+            """))
+
+            conn.execute(text("ANALYZE tmp_filtered_src;"))
+
+            # ----------------------------------------------------------
+            # 3) Materialize symbol-level stats once
+            # ----------------------------------------------------------
+            conn.execute(text("""
+                CREATE TEMP TABLE tmp_sym_stats ON COMMIT DROP AS
+                SELECT
+                    symbol,
+                    MIN(ts) AS min_date,
+                    MAX(ts) AS max_date,
+                    MAX(high) AS highest_value
+                FROM tmp_filtered_src
+                GROUP BY symbol;
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX idx_tmp_sym_stats_symbol
+                ON tmp_sym_stats(symbol);
+            """))
+
+            conn.execute(text("""
+                CREATE TEMP TABLE tmp_highest_date ON COMMIT DROP AS
+                SELECT
+                    f.symbol,
+                    MIN(f.ts) AS highest_date
+                FROM tmp_filtered_src f
+                JOIN tmp_sym_stats s
+                ON s.symbol = f.symbol
+                AND f.high = s.highest_value
+                GROUP BY f.symbol;
+            """))
+
+            conn.execute(text("""
+                CREATE INDEX idx_tmp_highest_date_symbol
+                ON tmp_highest_date(symbol);
+            """))
+
+            conn.execute(text("ANALYZE tmp_sym_stats;"))
+            conn.execute(text("ANALYZE tmp_highest_date;"))
+
+            # ----------------------------------------------------------
+            # 4) Insert output
+            # ----------------------------------------------------------
+            if interval == "daily":
+                conn.execute(text(f"""
+                    INSERT INTO {target_schema}."{target_table}" (
+                        "EXCHANGE","SYMBOL","INTERVAL","TIMESTAMP",
+                        "MIN_DATE","MAX_DATE","HIGHEST_VALUE","HIGHEST_DATE",
+                        "OPEN","HIGH","LOW","CLOSE","VOLUME","BAR_COUNT"
+                    )
                     SELECT
+                        :exchange AS "EXCHANGE",
+                        f.symbol AS "SYMBOL",
+                        'DAILY' AS "INTERVAL",
+                        f.day_ts AS "TIMESTAMP",
+                        s.min_date AS "MIN_DATE",
+                        s.max_date AS "MAX_DATE",
+                        s.highest_value AS "HIGHEST_VALUE",
+                        h.highest_date AS "HIGHEST_DATE",
+                        f.open AS "OPEN",
+                        f.high AS "HIGH",
+                        f.low AS "LOW",
+                        f.close AS "CLOSE",
+                        COALESCE(f.volume, 0.0) AS "VOLUME",
+                        0 AS "BAR_COUNT"
+                    FROM tmp_filtered_src f
+                    JOIN tmp_sym_stats s ON s.symbol = f.symbol
+                    JOIN tmp_highest_date h ON h.symbol = f.symbol
+                    ORDER BY f.symbol, f.day_ts;
+                """), {"exchange": exchange})
+
+            else:
+                # 1min or hourly -> aggregate to daily
+                conn.execute(text("""
+                    DROP TABLE IF EXISTS tmp_open_rows;
+                    DROP TABLE IF EXISTS tmp_close_rows;
+                    DROP TABLE IF EXISTS tmp_daily_agg;
+                """))
+
+                # First open row of each day
+                conn.execute(text("""
+                    CREATE TEMP TABLE tmp_open_rows ON COMMIT DROP AS
+                    SELECT DISTINCT ON (symbol, day_ts)
                         symbol,
-                        MIN(ts) AS min_date,
-                        MAX(ts) AS max_date,
-                        MAX(high) AS highest_value
-                    FROM filtered
-                    GROUP BY symbol
-                ),
-                highest_date AS (
-                    SELECT f.symbol, MIN(f.ts) AS highest_date
-                    FROM filtered f
-                    JOIN sym_stats s
-                    ON s.symbol = f.symbol
-                    AND f.high = s.highest_value
-                    GROUP BY f.symbol
-                ),
-                daily_agg AS (
+                        day_ts,
+                        open
+                    FROM tmp_filtered_src
+                    ORDER BY symbol, day_ts, ts ASC;
+                """))
+
+                # Last close row of each day
+                conn.execute(text("""
+                    CREATE TEMP TABLE tmp_close_rows ON COMMIT DROP AS
+                    SELECT DISTINCT ON (symbol, day_ts)
+                        symbol,
+                        day_ts,
+                        close
+                    FROM tmp_filtered_src
+                    ORDER BY symbol, day_ts, ts DESC;
+                """))
+
+                # Daily aggregate once
+                conn.execute(text("""
+                    CREATE TEMP TABLE tmp_daily_agg ON COMMIT DROP AS
                     SELECT
                         symbol,
                         day_ts,
-                        MIN(ts) AS first_ts,
-                        MAX(ts) AS last_ts,
                         MIN(low) AS low,
                         MAX(high) AS high,
                         SUM(volume) AS volume,
                         COUNT(*)::int AS bar_count
-                    FROM filtered
-                    GROUP BY symbol, day_ts
-                ),
-                daily_ohlc AS (
+                    FROM tmp_filtered_src
+                    GROUP BY symbol, day_ts;
+                """))
+
+                conn.execute(text("""
+                    CREATE INDEX idx_tmp_open_rows_symbol_day
+                    ON tmp_open_rows(symbol, day_ts);
+                """))
+                conn.execute(text("""
+                    CREATE INDEX idx_tmp_close_rows_symbol_day
+                    ON tmp_close_rows(symbol, day_ts);
+                """))
+                conn.execute(text("""
+                    CREATE INDEX idx_tmp_daily_agg_symbol_day
+                    ON tmp_daily_agg(symbol, day_ts);
+                """))
+
+                conn.execute(text("ANALYZE tmp_open_rows;"))
+                conn.execute(text("ANALYZE tmp_close_rows;"))
+                conn.execute(text("ANALYZE tmp_daily_agg;"))
+
+                conn.execute(text(f"""
+                    INSERT INTO {target_schema}."{target_table}" (
+                        "EXCHANGE","SYMBOL","INTERVAL","TIMESTAMP",
+                        "MIN_DATE","MAX_DATE","HIGHEST_VALUE","HIGHEST_DATE",
+                        "OPEN","HIGH","LOW","CLOSE","VOLUME","BAR_COUNT"
+                    )
                     SELECT
-                        a.symbol,
-                        a.day_ts,
-                        s.min_date,
-                        s.max_date,
-                        s.highest_value,
-                        h.highest_date,
-                        (SELECT f.open
-                        FROM filtered f
-                        WHERE f.symbol = a.symbol
-                        AND f.day_ts = a.day_ts
-                        AND f.ts = a.first_ts
-                        LIMIT 1) AS open,
-                        (SELECT f.close
-                        FROM filtered f
-                        WHERE f.symbol = a.symbol
-                        AND f.day_ts = a.day_ts
-                        AND f.ts = a.last_ts
-                        LIMIT 1) AS close,
-                        a.high,
-                        a.low,
-                        a.volume,
-                        a.bar_count
-                    FROM daily_agg a
-                    JOIN sym_stats s ON s.symbol = a.symbol
-                    JOIN highest_date h ON h.symbol = a.symbol
-                )
-                INSERT INTO {target_schema}."{target_table}" (
-                    "EXCHANGE","SYMBOL","INTERVAL","TIMESTAMP",
-                    "MIN_DATE","MAX_DATE","HIGHEST_VALUE","HIGHEST_DATE",
-                    "OPEN","HIGH","LOW","CLOSE","VOLUME","BAR_COUNT"
-                )
-                SELECT
-                    :exchange AS "EXCHANGE",
-                    d.symbol AS "SYMBOL",
-                    'CONVERTED_DAILY' AS "INTERVAL",
-                    d.day_ts AS "TIMESTAMP",
-                    d.min_date AS "MIN_DATE",
-                    d.max_date AS "MAX_DATE",
-                    d.highest_value AS "HIGHEST_VALUE",
-                    d.highest_date AS "HIGHEST_DATE",
-                    d.open AS "OPEN",
-                    d.high AS "HIGH",
-                    d.low AS "LOW",
-                    d.close AS "CLOSE",
-                    COALESCE(d.volume, 0.0) AS "VOLUME",
-                    d.bar_count AS "BAR_COUNT"
-                FROM daily_ohlc d
-                ORDER BY d.symbol, d.day_ts;
-            """)
-
-            params = {
-                "exchange": exchange,
-                "symbols": syms,
-                "n_days": int(start_trading_days_back),
-            }
-
-        else:
-            raise ValueError(f"Unsupported interval: {interval} (use '1min/hourly' or 'daily')")
-
-        # Execute insert
-        with self.engine.begin() as conn:
-            conn.execute(q, params)
+                        :exchange AS "EXCHANGE",
+                        a.symbol AS "SYMBOL",
+                        'CONVERTED_DAILY' AS "INTERVAL",
+                        a.day_ts AS "TIMESTAMP",
+                        s.min_date AS "MIN_DATE",
+                        s.max_date AS "MAX_DATE",
+                        s.highest_value AS "HIGHEST_VALUE",
+                        h.highest_date AS "HIGHEST_DATE",
+                        o.open AS "OPEN",
+                        a.high AS "HIGH",
+                        a.low AS "LOW",
+                        c.close AS "CLOSE",
+                        COALESCE(a.volume, 0.0) AS "VOLUME",
+                        a.bar_count AS "BAR_COUNT"
+                    FROM tmp_daily_agg a
+                    JOIN tmp_open_rows o
+                    ON o.symbol = a.symbol AND o.day_ts = a.day_ts
+                    JOIN tmp_close_rows c
+                    ON c.symbol = a.symbol AND c.day_ts = a.day_ts
+                    JOIN tmp_sym_stats s
+                    ON s.symbol = a.symbol
+                    JOIN tmp_highest_date h
+                    ON h.symbol = a.symbol
+                    ORDER BY a.symbol, a.day_ts;
+                """), {"exchange": exchange})
 
             after_rows = conn.execute(
                 text(f'SELECT COUNT(*) FROM {target_schema}."{target_table}";')
@@ -1391,10 +1396,10 @@ class PostgresRepository:
 
         return {
             "exchange": exchange,
-            "before_symbols": before_symbols,
+            "before_symbols": int(before_symbols),
             "after_symbols": int(after_symbols),
             "after_rows": int(after_rows),
-            "target": f'{target_schema}.{target_table}',
+            "target": f"{target_schema}.{target_table}",
         }
 
     ########### EMA CALC CHAPTER #########
@@ -1403,7 +1408,6 @@ class PostgresRepository:
             SELECT DISTINCT "SYMBOL"
             FROM silver."IND_FRV_POC_PROFILE"
             WHERE "EXCHANGE" = :exchange
-            AND "IN_SCOPE_FOR_EMA_RSI" = TRUE
             ORDER BY "SYMBOL";
         """)
         with self.engine.begin() as conn:
@@ -1872,11 +1876,6 @@ class PostgresRepository:
                 "VOLUME"
             FROM {source_schema}."{source_table}"
             WHERE "EXCHANGE" = :exchange
-            AND "SYMBOL" IS NOT NULL
-            AND "TIMESTAMP" IS NOT NULL
-            AND "HIGH" IS NOT NULL
-            AND "VOLUME" IS NOT NULL
-            AND "VOLUME" >= 0
             ORDER BY "SYMBOL" ASC, "TIMESTAMP" ASC
         ''')
         with self.engine.begin() as conn:
@@ -2476,7 +2475,6 @@ class PostgresRepository:
             AND frvp."SYMBOL" = pvt."SYMBOL"
 
             WHERE frvp."EXCHANGE" = :exchange
-            AND frvp."IN_SCOPE_FOR_EMA_RSI" = TRUE
         """
 
         insert_master_sql = f"""
@@ -2486,19 +2484,14 @@ class PostgresRepository:
             {select_sql}
         """
 
-        insert_log_sql = f"""
-            INSERT INTO {log_schema}."{log_table}" (
-                    {insert_columns_sql}
-            )
-            {select_sql}
-        """
+        
 
         count_sql = text(f'SELECT COUNT(*) FROM {target_schema}."{target_table}";')
 
         with self.engine.begin() as conn:
             conn.execute(text(insert_master_sql), {"exchange": exchange})
             master_count = conn.execute(count_sql).scalar() or 0
-            conn.execute(text(insert_log_sql), {"exchange": exchange})
+            
 
         return {
             "master_inserted_rows": int(master_count),
@@ -3132,3 +3125,716 @@ class PostgresRepository:
             conn.execute(q, rows)
 
         return len(rows)
+    
+    # ====================================================
+    # CALC MASTER SCORE
+    # ====================================================
+
+
+    def get_table_as_dataframe(
+        self,
+        schema_name: str,
+        table_name: str,
+        exchange: str | None = None,
+    ) -> pd.DataFrame:
+        sql = f'SELECT * FROM {schema_name}."{table_name}"'
+        params = {}
+
+        if exchange is not None:
+            sql += ' WHERE "EXCHANGE" = :exchange'
+            params["exchange"] = exchange
+
+        with self.engine.begin() as conn:
+            return pd.read_sql(text(sql), conn, params=params)
+
+
+    def truncate_table(
+        self,
+        schema_name: str,
+        table_name: str,
+    ) -> None:
+        from sqlalchemy import text
+
+        sql = text(f'TRUNCATE TABLE {schema_name}."{table_name}"')
+        with self.engine.begin() as conn:
+            conn.execute(sql)
+
+
+    def insert_dataframe(
+        self,
+        df: pd.DataFrame,
+        schema_name: str,
+        table_name: str,
+    ) -> None:
+        if df.empty:
+            return
+
+        with self.engine.begin() as conn:
+            df.to_sql(
+                name=table_name,
+                schema=schema_name,
+                con=conn,
+                if_exists="append",
+                index=False,
+                method="multi",
+                chunksize=1000,
+            )
+
+    # ===========================================
+    # RT WATCH
+    # ===========================================
+
+    def get_symbols_from_table(
+        self,
+        source_schema: str,
+        source_table: str,
+        exchange: str,
+        symbol_col: str = "SYMBOL",
+        exchange_col: str = "EXCHANGE",
+        where_sql: str | None = None,
+        top_n: int = 10,
+ 
+
+    ) -> List[str]:
+        query = f'''
+            SELECT DISTINCT "{symbol_col}"
+            FROM {source_schema}."{source_table}"
+            WHERE "{exchange_col}" = :exchange
+            AND "RANK" <= :top_n
+        '''
+        
+        if where_sql:
+            query += f'\n  AND ({where_sql})'
+
+        query += f'\nORDER BY "{symbol_col}";'
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text(query),
+                {"exchange": exchange, "top_n": top_n},
+            ).fetchall()
+    
+        return [r[0] for r in rows if r[0]]
+
+    def truncate_table(
+        self,
+        schema_name: str,
+        table_name: str,
+    ) -> None:
+        q = text(f'TRUNCATE TABLE {schema_name}."{table_name}";')
+        with self.engine.begin() as conn:
+            conn.execute(q)
+
+    def bulk_insert_watch_dataset(
+        self,
+        rows: List[Dict[str, Any]],
+        target_schema: str,
+        target_table: str,
+    ) -> int:
+        if not rows:
+            return 0
+
+        q = text(f'''
+        INSERT INTO {target_schema}."{target_table}" (
+            "EXCHANGE",
+            "SYMBOL",
+            "TIMESTAMP",
+            "OPEN",
+            "HIGH",
+            "LOW",
+            "CLOSE",
+            "VOLUME",
+            "ROW_ID",
+            "SOURCE",
+            "CREATED_AT"
+        )
+        VALUES (
+            :EXCHANGE,
+            :SYMBOL,
+            :TIMESTAMP,
+            :OPEN,
+            :HIGH,
+            :LOW,
+            :CLOSE,
+            :VOLUME,
+            :ROW_ID,
+            :SOURCE,
+            :CREATED_AT
+        )
+        ON CONFLICT ("ROW_ID") DO NOTHING;
+    ''')
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)
+    
+
+    # ================================
+    # calc buy signal
+    # ================================
+
+    def build_watch_signal_check_rows(
+        self,
+        exchange: str,
+        input_schema: str,
+        input_table: str,
+        open_hour: int,
+        open_minute: int,
+        close_hour: int,
+        close_minute: int,
+    ) -> List[Dict[str, Any]]:
+        q = text(f"""
+            WITH last_day AS (
+                SELECT MAX(("TIMESTAMP")::date) AS dt
+                FROM {input_schema}."{input_table}"
+                WHERE "EXCHANGE" = :exchange
+            ),
+            day_data AS (
+                SELECT *
+                FROM {input_schema}."{input_table}", last_day
+                WHERE "EXCHANGE" = :exchange
+                AND ("TIMESTAMP")::date = last_day.dt
+            ),
+            symbols AS (
+                SELECT DISTINCT
+                    d."EXCHANGE",
+                    d."SYMBOL"
+                FROM day_data d
+            ),
+            merged AS (
+                SELECT
+                    s."EXCHANGE" AS exchange,
+                    s."SYMBOL" AS symbol,
+                    ld.dt AS dt,
+
+                    o.open_timestamp,
+                    o.open_price,
+
+                    c.close_timestamp,
+                    c.close_price,
+
+                    v.daily_volume
+
+                FROM symbols s
+                JOIN last_day ld ON TRUE
+
+                -- OPEN: exact varsa kendisi, yoksa requested time'dan sonraki ilk row
+                LEFT JOIN LATERAL (
+                    SELECT
+                        d."TIMESTAMP" AS open_timestamp,
+                        d."OPEN"::double precision AS open_price
+                    FROM day_data d
+                    WHERE d."EXCHANGE" = s."EXCHANGE"
+                    AND d."SYMBOL" = s."SYMBOL"
+                    AND d."TIMESTAMP"::time >= make_time(:open_hour, :open_minute, 0)
+                    ORDER BY d."TIMESTAMP" ASC
+                    LIMIT 1
+                ) o ON TRUE
+
+                -- CLOSE: exact varsa kendisi, yoksa requested time'dan önceki son row
+                LEFT JOIN LATERAL (
+                    SELECT
+                        d."TIMESTAMP" AS close_timestamp,
+                        d."CLOSE"::double precision AS close_price
+                    FROM day_data d
+                    WHERE d."EXCHANGE" = s."EXCHANGE"
+                    AND d."SYMBOL" = s."SYMBOL"
+                    AND d."TIMESTAMP"::time <= make_time(:close_hour, :close_minute, 0)
+                    ORDER BY d."TIMESTAMP" DESC
+                    LIMIT 1
+                ) c ON TRUE
+
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COALESCE(SUM(d."VOLUME"::double precision), 0) AS daily_volume
+                    FROM day_data d
+                    WHERE d."EXCHANGE" = s."EXCHANGE"
+                    AND d."SYMBOL" = s."SYMBOL"
+                    AND d."TIMESTAMP"::time >= make_time(:open_hour, :open_minute, 0)
+                    AND d."TIMESTAMP"::time <= make_time(:close_hour, :close_minute, 0)
+                ) v ON TRUE
+
+                WHERE o.open_timestamp IS NOT NULL
+                AND c.close_timestamp IS NOT NULL
+            )
+            SELECT
+                exchange,
+                symbol,
+                TO_CHAR(dt, 'DD-MM-YYYY') AS date_str,
+                open_timestamp,
+                close_timestamp,
+                LPAD(CAST(:open_hour AS text), 2, '0') || ':' || LPAD(CAST(:open_minute AS text), 2, '0') AS requested_open_time,
+                LPAD(CAST(:close_hour AS text), 2, '0') || ':' || LPAD(CAST(:close_minute AS text), 2, '0') AS requested_close_time,
+                open_price,
+                close_price,
+                (close_price - open_price) AS diff_o_c,
+                daily_volume,
+                CASE
+                    WHEN (close_price - open_price) > 0 THEN 'BUY'
+                    WHEN (close_price - open_price) < 0 THEN 'AVOID'
+                    ELSE 'WATCH'
+                END AS status,
+                CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS created_at
+            FROM merged
+            ORDER BY symbol;
+        """)
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                q,
+                {
+                    "exchange": exchange,
+                    "open_hour": int(open_hour),
+                    "open_minute": int(open_minute),
+                    "close_hour": int(close_hour),
+                    "close_minute": int(close_minute),
+                },
+            ).fetchall()
+
+        return [
+        {
+            "EXCHANGE": r[0],
+            "SYMBOL": r[1],
+            "DATE": r[2],
+            "OPEN_TIMESTAMP": r[3],
+            "CLOSE_TIMESTAMP": r[4],
+            "REQUESTED_OPEN_TIME": r[5],
+            "REQUESTED_CLOSE_TIME": r[6],
+            "OPEN": float(r[7]) if r[7] is not None else None,
+            "CLOSE": float(r[8]) if r[8] is not None else None,
+            "DIFF_O_C": float(r[9]) if r[9] is not None else None,
+            "DAILY_VOLUME": float(r[10]) if r[10] is not None else None,
+            "STATUS": r[11],
+
+            # 🔴 YENİLER → ŞU AN NULL
+            "REALISED_CLOSE_TIMESTAMP": None,
+            "REALISED_CLOSE_PRICE": None,
+            "REALISED_PROFIT": None,
+
+            "CREATED_AT": r[12],
+        }
+        for r in rows
+    ]
+    
+    def insert_watch_signal_check_rows(
+        self,
+        schema: str,
+        table: str,
+        rows: List[Dict[str, Any]],
+    ) -> int:
+        if not rows:
+            return 0
+
+        q = text(f"""
+        INSERT INTO {schema}."{table}" (
+            "EXCHANGE",
+            "SYMBOL",
+            "DATE",
+            "OPEN_TIMESTAMP",
+            "CLOSE_TIMESTAMP",
+            "REQUESTED_OPEN_TIME",
+            "REQUESTED_CLOSE_TIME",
+            "OPEN",
+            "CLOSE",
+            "DIFF_O_C",
+            "DAILY_VOLUME",
+            "STATUS",
+
+            "REALISED_CLOSE_TIMESTAMP",
+            "REALISED_CLOSE_PRICE",
+            "REALISED_PROFIT",
+
+            "CREATED_AT"
+        )
+        VALUES (
+            :EXCHANGE,
+            :SYMBOL,
+            :DATE,
+            :OPEN_TIMESTAMP,
+            :CLOSE_TIMESTAMP,
+            :REQUESTED_OPEN_TIME,
+            :REQUESTED_CLOSE_TIME,
+            :OPEN,
+            :CLOSE,
+            :DIFF_O_C,
+            :DAILY_VOLUME,
+            :STATUS,
+
+            :REALISED_CLOSE_TIMESTAMP,
+            :REALISED_CLOSE_PRICE,
+            :REALISED_PROFIT,
+
+            :CREATED_AT
+        );
+    """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+        return len(rows)
+    
+
+    # update realised profic
+    def update_realised_close_fields_from_hourly_source(
+        self,
+        source_schema: str,
+        source_table: str,
+        target_schema: str,
+        target_table: str,
+        exchange: str | None = None,
+        overwrite: bool = False,
+    ) -> int:
+        from sqlalchemy import text
+
+        where_clauses = ["1=1"]
+        params = {}
+
+        if not overwrite:
+            where_clauses.extend([
+                't."REALISED_CLOSE_TIMESTAMP" IS NULL',
+                't."REALISED_CLOSE_PRICE" IS NULL',
+                't."REALISED_PROFIT" IS NULL',
+            ])
+
+        if exchange is not None:
+            where_clauses.append('t."EXCHANGE" = :exchange')
+            params["exchange"] = exchange
+
+        where_sql = " AND ".join(where_clauses)
+
+        sql = text(f"""
+            WITH pending AS (
+                SELECT
+                    t."EXCHANGE",
+                    t."SYMBOL",
+                    t."DATE",
+                    t."CLOSE" AS signal_close
+                FROM {target_schema}."{target_table}" t
+                WHERE {where_sql}
+            ),
+            matched AS (
+                SELECT
+                    p."EXCHANGE",
+                    p."SYMBOL",
+                    p."DATE",
+                    p.signal_close,
+                    s."TS" AS realised_close_timestamp,
+                    s."CLOSE" AS realised_close_price,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p."EXCHANGE", p."SYMBOL", p."DATE"
+                        ORDER BY s."TS" DESC
+                    ) AS rn
+                FROM pending p
+                JOIN {source_schema}."{source_table}" s
+                ON s."EXCHANGE" = p."EXCHANGE"
+                AND s."SYMBOL" = p."SYMBOL"
+                AND s."TS"::date = TO_DATE(p."DATE", 'DD-MM-YYYY')
+            ),
+            final_match AS (
+                SELECT
+                    "EXCHANGE",
+                    "SYMBOL",
+                    "DATE",
+                    realised_close_timestamp,
+                    realised_close_price,
+                    CASE
+                        WHEN signal_close IS NULL OR signal_close = 0 THEN NULL
+                        ELSE ROUND((((realised_close_price - signal_close) / signal_close) * 100.0)::numeric, 4)
+                    END AS realised_profit
+                FROM matched
+                WHERE rn = 1
+            )
+            UPDATE {target_schema}."{target_table}" t
+            SET
+                "REALISED_CLOSE_TIMESTAMP" = fm.realised_close_timestamp,
+                "REALISED_CLOSE_PRICE" = fm.realised_close_price,
+                "REALISED_PROFIT" = fm.realised_profit
+            FROM final_match fm
+            WHERE t."EXCHANGE" = fm."EXCHANGE"
+            AND t."SYMBOL" = fm."SYMBOL"
+            AND t."DATE" = fm."DATE"
+        """)
+
+        with self.engine.begin() as conn:
+            result = conn.execute(sql, params)
+            return result.rowcount if result.rowcount is not None else 0
+        
+
+    # ======================
+    # final master combined
+    # ======================
+    def build_master_final_combined(
+        self,
+        exchange: str,
+        target_schema: str,
+        target_table: str,
+        log_schema: str,
+        log_table: str,
+        main_schema: str,
+        main_table: str,
+        score_schema: str,
+        score_table: str,
+        triage_schema: str,
+        triage_table: str,
+    ) -> Dict[str, int]:
+        """
+        Build final combined table from:
+        1) main_table
+        2) left join score_table on EXCHANGE, SYMBOL, FRVP_PERIOD_TYPE
+        3) left join triage_table on EXCHANGE, SYMBOL
+
+        - target table is truncated before insert
+        - log table is append-only
+        """
+
+        exchange = exchange.upper().strip()
+
+        # 1) truncate target
+        self.truncate_table(target_schema, target_table)
+
+        insert_columns = [
+            "EXCHANGE",
+            "SYMBOL",
+
+            "FRVP_INTERVAL",
+            "FRVP_PERIOD_TYPE",
+            "FRVP_HIGHEST_DATE",
+            "FRVP_HIGHEST_VALUE",
+            "FRVP_ROW_COUNT_AFTER_HIGHEST",
+            "FRVP_DAY_COUNT_AFTER_HIGHEST",
+            "FRVP_LATEST_CLOSE_VALUE",
+            "FRVP_POC",
+            "FRVP_VAL",
+            "FRVP_VAH",
+
+            "BS_OPEN_PRICE",
+            "BS_CLOSE_PRICE",
+            "BS_DIFFER",
+            "BS_PERC",
+            "BS_BAR_STATUS",
+
+            "RAW_END_DATE",
+            "BRONZE_END_DATE",
+            "SILVER_END_DATE",
+            "SILVER_CONVERTED_END_DATE",
+            "EXPECTED_END_DATE",
+
+            "EMA_TIMESTAMP",
+            "EMA_END_DATE",
+            "EMA3",
+            "EMA5",
+            "EMA14",
+            "EMA20",
+            "EMA_STATUS_5_20",
+            "EMA_CROSS_5_20",
+            "EMA_STATUS_3_20",
+            "EMA_CROSS_3_20",
+            "EMA_STATUS_3_14",
+            "EMA_CROSS_3_14",
+            "EMA_DAYS_SINCE_CROSS_5_20",
+            "EMA_DAYS_SINCE_CROSS_3_20",
+            "EMA_DAYS_SINCE_CROSS_3_14",
+
+            "RSI",
+            "RSI_MA",
+            "RSI_STATUS",
+            "RSI_CROSS",
+            "RSI_CROSS_DAYS_AGO",
+
+            "MFI",
+            "MFI_YESTERDAY",
+            "MFI_12DAY_AVG",
+            "MFI_DIRECTION",
+
+            "VWAP_HIGHEST_VALUE",
+            "VWAP_HIGHEST_TIMESTAMP",
+            "VWAP",
+            "VOL_AVG_5DAY",
+            "VOL_AVG_10DAY",
+            "VOL_AVG_20DAY",
+            "VOL_YESTERDAY",
+            "VOL_LASTDAY",
+            "VOL_STATUS",
+
+            "PVT_START_DATE",
+            "PVT_END_DATE",
+            "PVT_YEAR",
+            "PIVOT",
+            "PVT_R1",
+            "PVT_R2",
+            "PVT_R3",
+            "PVT_R4",
+            "PVT_R5",
+            "PVT_S1",
+            "PVT_S2",
+            "PVT_S3",
+            "PVT_S4",
+            "PVT_S5",
+            "PVT_STATUS",
+
+            "POC_FRVP_STATUS",
+            "VWAP_STATUS",
+            "EMA_STATUS",
+            "RSI_STATUS_TXT",
+            "MFI_STATUS",
+            "VOL_STATUS_TXT",
+            "MASTER_SCORE",
+            "TRIAGE_ENTRY_DAY",
+            "TRIAGE_SCORE",
+            "RANK",
+            "VALID_CLUSTER_COUNT",
+            "AVG_POC",
+            "DAYS_AFTER_POC",
+            "STOP_LOSS",
+            "TARGET_PRICE",
+            "STOP_LOSS_PERC",
+            "TARGET_PERC",
+            "CREATED_AT",
+            "CREATED_DAY",
+            "RUNTIME",
+        ]
+
+        insert_columns_sql = ",\n                ".join(f'"{col}"' for col in insert_columns)
+
+        select_sql = f"""
+            SELECT
+                m."EXCHANGE" AS "EXCHANGE",
+                m."SYMBOL" AS "SYMBOL",
+
+                m."FRVP_INTERVAL" AS "FRVP_INTERVAL",
+                m."FRVP_PERIOD_TYPE" AS "FRVP_PERIOD_TYPE",
+                m."FRVP_HIGHEST_DATE" AS "FRVP_HIGHEST_DATE",
+                m."FRVP_HIGHEST_VALUE" AS "FRVP_HIGHEST_VALUE",
+                m."FRVP_ROW_COUNT_AFTER_HIGHEST" AS "FRVP_ROW_COUNT_AFTER_HIGHEST",
+                m."FRVP_DAY_COUNT_AFTER_HIGHEST" AS "FRVP_DAY_COUNT_AFTER_HIGHEST",
+                m."FRVP_LATEST_CLOSE_VALUE" AS "FRVP_LATEST_CLOSE_VALUE",
+                m."FRVP_POC" AS "FRVP_POC",
+                m."FRVP_VAL" AS "FRVP_VAL",
+                m."FRVP_VAH" AS "FRVP_VAH",
+
+                m."BS_OPEN_PRICE" AS "BS_OPEN_PRICE",
+                m."BS_CLOSE_PRICE" AS "BS_CLOSE_PRICE",
+                m."BS_DIFFER" AS "BS_DIFFER",
+                m."BS_PERC" AS "BS_PERC",
+                m."BS_BAR_STATUS" AS "BS_BAR_STATUS",
+
+                m."RAW_END_DATE" AS "RAW_END_DATE",
+                m."BRONZE_END_DATE" AS "BRONZE_END_DATE",
+                m."SILVER_END_DATE" AS "SILVER_END_DATE",
+                m."SILVER_CONVERTED_END_DATE" AS "SILVER_CONVERTED_END_DATE",
+                m."EXPECTED_END_DATE" AS "EXPECTED_END_DATE",
+
+                m."EMA_TIMESTAMP" AS "EMA_TIMESTAMP",
+                m."EMA_END_DATE" AS "EMA_END_DATE",
+                m."EMA3" AS "EMA3",
+                m."EMA5" AS "EMA5",
+                m."EMA14" AS "EMA14",
+                m."EMA20" AS "EMA20",
+                m."EMA_STATUS_5_20" AS "EMA_STATUS_5_20",
+                m."EMA_CROSS_5_20" AS "EMA_CROSS_5_20",
+                m."EMA_STATUS_3_20" AS "EMA_STATUS_3_20",
+                m."EMA_CROSS_3_20" AS "EMA_CROSS_3_20",
+                m."EMA_STATUS_3_14" AS "EMA_STATUS_3_14",
+                m."EMA_CROSS_3_14" AS "EMA_CROSS_3_14",
+                m."EMA_DAYS_SINCE_CROSS_5_20" AS "EMA_DAYS_SINCE_CROSS_5_20",
+                m."EMA_DAYS_SINCE_CROSS_3_20" AS "EMA_DAYS_SINCE_CROSS_3_20",
+                m."EMA_DAYS_SINCE_CROSS_3_14" AS "EMA_DAYS_SINCE_CROSS_3_14",
+
+                m."RSI" AS "RSI",
+                m."RSI_MA" AS "RSI_MA",
+                m."RSI_STATUS" AS "RSI_STATUS",
+                m."RSI_CROSS" AS "RSI_CROSS",
+                m."RSI_CROSS_DAYS_AGO" AS "RSI_CROSS_DAYS_AGO",
+
+                m."MFI" AS "MFI",
+                m."MFI_YESTERDAY" AS "MFI_YESTERDAY",
+                m."MFI_12DAY_AVG" AS "MFI_12DAY_AVG",
+                m."MFI_DIRECTION" AS "MFI_DIRECTION",
+
+                m."VWAP_HIGHEST_VALUE" AS "VWAP_HIGHEST_VALUE",
+                m."VWAP_HIGHEST_TIMESTAMP" AS "VWAP_HIGHEST_TIMESTAMP",
+                m."VWAP" AS "VWAP",
+                m."VOL_AVG_5DAY" AS "VOL_AVG_5DAY",
+                m."VOL_AVG_10DAY" AS "VOL_AVG_10DAY",
+                m."VOL_AVG_20DAY" AS "VOL_AVG_20DAY",
+                m."VOL_YESTERDAY" AS "VOL_YESTERDAY",
+                m."VOL_LASTDAY" AS "VOL_LASTDAY",
+                m."VOL_STATUS" AS "VOL_STATUS",
+
+                m."PVT_START_DATE" AS "PVT_START_DATE",
+                m."PVT_END_DATE" AS "PVT_END_DATE",
+                m."PVT_YEAR" AS "PVT_YEAR",
+                m."PIVOT" AS "PIVOT",
+                m."PVT_R1" AS "PVT_R1",
+                m."PVT_R2" AS "PVT_R2",
+                m."PVT_R3" AS "PVT_R3",
+                m."PVT_R4" AS "PVT_R4",
+                m."PVT_R5" AS "PVT_R5",
+                m."PVT_S1" AS "PVT_S1",
+                m."PVT_S2" AS "PVT_S2",
+                m."PVT_S3" AS "PVT_S3",
+                m."PVT_S4" AS "PVT_S4",
+                m."PVT_S5" AS "PVT_S5",
+                m."PVT_STATUS" AS "PVT_STATUS",
+
+                s."poc_frvp_status" AS "POC_FRVP_STATUS",
+                s."vwap_status" AS "VWAP_STATUS",
+                s."ema_status" AS "EMA_STATUS",
+                s."rsi_status" AS "RSI_STATUS_TXT",
+                s."mfi_status" AS "MFI_STATUS",
+                s."vol_status" AS "VOL_STATUS_TXT",
+                s."master_score" AS "MASTER_SCORE",
+                e."TRIAGE_ENTRY_DAY" AS "TRIAGE_ENTRY_DAY",
+
+                e."MASTER_SCORE" AS "TRIAGE_SCORE",
+                e."RANK" AS "RANK",
+                e."VALID_CLUSTER_COUNT" AS "VALID_CLUSTER_COUNT",
+                e."AVG_POC" AS "AVG_POC",
+                e."DAYS_AFTER_POC" AS "DAYS_AFTER_POC",
+                e."STOP_LOSS" AS "STOP_LOSS",
+                e."TARGET_PRICE" AS "TARGET_PRICE",
+                e."STOP_LOSS_PERC" AS "STOP_LOSS_PERC",
+                e."TARGET_PERC" AS "TARGET_PERC",
+
+                CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS "CREATED_AT",
+                TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY') AS "CREATED_DAY",
+                TO_CHAR(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam', 'DD-MM-YYYY HH24:MI') AS "RUNTIME"
+
+            FROM {main_schema}."{main_table}" m
+
+            LEFT JOIN {score_schema}."{score_table}" s
+                ON m."EXCHANGE" = s."EXCHANGE"
+            AND m."SYMBOL" = s."SYMBOL"
+            AND m."FRVP_PERIOD_TYPE" = s."FRVP_PERIOD_TYPE"
+
+            LEFT JOIN {triage_schema}."{triage_table}" e
+                ON m."EXCHANGE" = e."EXCHANGE"
+            AND m."SYMBOL" = e."SYMBOL"
+
+            WHERE m."EXCHANGE" = :exchange
+        """
+
+        insert_target_sql = f"""
+            INSERT INTO {target_schema}."{target_table}" (
+                    {insert_columns_sql}
+            )
+            {select_sql}
+        """
+
+        insert_log_sql = f"""
+            INSERT INTO {log_schema}."{log_table}" (
+                    {insert_columns_sql}
+            )
+            {select_sql}
+        """
+
+        count_sql = text(f'SELECT COUNT(*) FROM {target_schema}."{target_table}";')
+
+        with self.engine.begin() as conn:
+            conn.execute(text(insert_target_sql), {"exchange": exchange})
+            master_count = conn.execute(count_sql).scalar() or 0
+            conn.execute(text(insert_log_sql), {"exchange": exchange})
+
+        return {
+            "master_inserted_rows": int(master_count),
+        }
