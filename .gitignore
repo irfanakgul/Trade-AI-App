@@ -237,3 +237,4 @@ app/backup/data/
 google/tokens/
 
 ./
+test/poc_log.txt
