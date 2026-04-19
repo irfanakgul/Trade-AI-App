@@ -19,7 +19,7 @@ from app.services.watch_signal_check_service import ( # type: ignore
 class WatchPipelineFlags:
     run_watch_ingestion: bool = True
     run_watch_signal_check: bool = False
-    run_watch_calc_2: bool = False
+    run_buy_focus: bool = True
     run_watch_calc_3: bool = False
     send_telegram_buy_signal: bool = False
 
@@ -125,19 +125,26 @@ async def run_watch_pipeline(
         print(f"❌ [SIGNAL-CHECK] {exchange} skipped!")
 
     # ----------------------------------------------------------
-    # 3) WATCH CALC 2
+    # 3) run_buy_focus:
     # ----------------------------------------------------------
-    if flags.run_watch_calc_2:
-        print(f"[WATCH-CALC-2] {exchange} started...")
-        print(f"[WATCH-CALC-2] {exchange} completed.")
-    # else:
-    #     print(f"❌ [WATCH-CALC-2] {exchange} skipped!")
+    if flags.run_buy_focus:
+        print(f"[run_buy_focus] {exchange} started...")
 
-    # ----------------------------------------------------------
-    # 4) WATCH CALC 3
-    # ----------------------------------------------------------
-    if flags.run_watch_calc_3:
-        print(f"[WATCH-CALC-3] {exchange} started...")
-        print(f"[WATCH-CALC-3] {exchange} completed.")
-    # else:
-    #     print(f"❌ [WATCH-CALC-3] {exchange} skipped!")
+        result = repo.append_daily_buy_signals(
+            exchange=exchange,
+            source_schema="prod",
+            source_table=f"watch_signal_check_{exc_name}",
+            triage_schema="gold",
+            triage_table=f"{exc_name}_evaluation_master_score",
+            target_schema="live",
+            target_table="daily_buy_signals_all",
+        )
+
+        print(
+            f"[run_buy_focus] {exchange} completed. "
+            f"inserted_rows={result['inserted_rows']} "
+            f"total_rows_for_exchange={result['total_rows_for_exchange']}"
+        )
+    else:
+        print(f"❌ [run_buy_focus] {exchange} skipped!")
+

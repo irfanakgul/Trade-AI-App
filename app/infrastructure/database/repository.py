@@ -3838,3 +3838,80 @@ class PostgresRepository:
         return {
             "master_inserted_rows": int(master_count),
         }
+    
+    # =====================================
+    # LIVE buy signal table for all exc
+    # =====================================
+
+    def append_daily_buy_signals(
+        self,
+        exchange: str,
+        source_schema: str,
+        source_table: str,
+        triage_schema: str,
+        triage_table: str,
+        target_schema: str,
+        target_table: str,
+    ) -> Dict[str, int]:
+        """
+        Append BUY signals into live table.
+
+        A = source watch signal table
+        B = evaluation master score table
+
+        Join:
+        A.EXCHANGE = B.EXCHANGE
+        A.SYMBOL   = B.SYMBOL
+        """
+
+        exchange = exchange.upper().strip()
+
+        insert_sql = f"""
+            INSERT INTO {target_schema}."{target_table}" (
+                "EXCHANGE",
+                "SYMBOL",
+                "DATE",
+                "TRIAGE_SCORE",
+                "RANK",
+                "TARGET_PRICE",
+                "SIGNAL",
+                "PRICE_ON_BUY",
+                "STATUS",
+                "CREATED_AT"
+            )
+            SELECT
+                a."EXCHANGE" AS "EXCHANGE",
+                a."SYMBOL" AS "SYMBOL",
+                b."TRIAGE_ENTRY_DAY" AS "DATE",
+                b."MASTER_SCORE" AS "TRIAGE_SCORE",
+                b."RANK" AS "RANK",
+                b."TARGET_PRICE" AS "TARGET_PRICE",
+                a."STATUS" AS "SIGNAL",
+                NULL AS "PRICE_ON_BUY",
+                NULL AS "STATUS",
+                TO_CHAR(
+                    CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam',
+                    'DD-MM-YYYY HH24:MI'
+                ) AS "CREATED_AT"
+            FROM {source_schema}."{source_table}" a
+            INNER JOIN {triage_schema}."{triage_table}" b
+                ON a."EXCHANGE" = b."EXCHANGE"
+            AND a."SYMBOL" = b."SYMBOL"
+            WHERE a."EXCHANGE" = :exchange
+            AND a."STATUS" = 'BUY'
+        """
+
+        count_sql = text(f"""
+            SELECT COUNT(*)
+            FROM {target_schema}."{target_table}"
+            WHERE "EXCHANGE" = :exchange
+        """)
+
+        with self.engine.begin() as conn:
+            res = conn.execute(text(insert_sql), {"exchange": exchange})
+            total_rows = conn.execute(count_sql, {"exchange": exchange}).scalar() or 0
+
+        return {
+            "inserted_rows": int(res.rowcount or 0),
+            "total_rows_for_exchange": int(total_rows),
+        }
