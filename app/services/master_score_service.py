@@ -11,17 +11,18 @@ from app.infrastructure.database.repository import PostgresRepository
 from app.services.telegram_bot_chat_service import telegram_send_message  # type: ignore
 from app.infrastructure.database.db_connector import fn_write_cloud
 
+
 # ============================================================
 # CONFIG
 # ============================================================
 
 @dataclass
 class MasterScoreWeights:
-    poc_frvp: float = 0.65
+    poc_frvp: float = 0.62
     vwap: float = 0.02
     ema: float = 0.09
     rsi: float = 0.07
-    mfi: float = 0.07
+    mfi: float = 0.10
     volume: float = 0.10
 
 
@@ -45,16 +46,20 @@ class TradeLevelConfig:
     entry_markup_perc: float = 0.5
     stop_loss_perc: float = 3.0
     top_n: int = 10
+
+
 @dataclass
 class RankConfig:
     master_score_min: float = 50.0
     days_after_poc_max: int = 8
     fallback_rank: int = 99999
 
+
 @dataclass
 class TelegramConfig:
     send: bool = False
     title: str = "TOP 10"
+
 
 @dataclass
 class MasterScoreServiceConfig:
@@ -214,6 +219,7 @@ class MasterScoreService:
         t = self.cfg.thresholds
         tr = self.cfg.trade
         tg = self.cfg.telegram
+        rk = self.cfg.rank
 
         return {
             "exchange": kwargs["exchange"] if kwargs["exchange"] is not None else self.cfg.exchange,
@@ -225,9 +231,9 @@ class MasterScoreService:
             "created_at": kwargs["created_at"] if kwargs["created_at"] is not None else (self.cfg.created_at or datetime.now()),
 
             "top_n": kwargs["top_n"] if kwargs["top_n"] is not None else tr.top_n,
-            "rank_master_score_min": kwargs["rank_master_score_min"] if kwargs["rank_master_score_min"] is not None else 50.0,
-            "rank_days_after_poc_max": kwargs["rank_days_after_poc_max"] if kwargs["rank_days_after_poc_max"] is not None else 8,
-            "rank_default_value": kwargs["rank_default_value"] if kwargs["rank_default_value"] is not None else 99999,
+            "rank_master_score_min": kwargs["rank_master_score_min"] if kwargs["rank_master_score_min"] is not None else rk.master_score_min,
+            "rank_days_after_poc_max": kwargs["rank_days_after_poc_max"] if kwargs["rank_days_after_poc_max"] is not None else rk.days_after_poc_max,
+            "rank_default_value": kwargs["rank_default_value"] if kwargs["rank_default_value"] is not None else rk.fallback_rank,
             "entry_markup_perc": kwargs["entry_markup_perc"] if kwargs["entry_markup_perc"] is not None else tr.entry_markup_perc,
             "stop_loss_perc": kwargs["stop_loss_perc"] if kwargs["stop_loss_perc"] is not None else tr.stop_loss_perc,
 
@@ -253,8 +259,7 @@ class MasterScoreService:
             "send_telegram": kwargs["send_telegram"] if kwargs["send_telegram"] is not None else tg.send,
             "telegram_title": kwargs["telegram_title"] if kwargs["telegram_title"] is not None else tg.title,
 
-
-                        "days_after_poc_input_schema": (
+            "days_after_poc_input_schema": (
                 kwargs["days_after_poc_input_schema"]
                 if kwargs["days_after_poc_input_schema"] is not None
                 else self.cfg.days_after_poc_input_schema
@@ -267,7 +272,7 @@ class MasterScoreService:
         }
 
     # ============================================================
-    # EXACT HELPERS
+    # HELPERS
     # ============================================================
 
     @staticmethod
@@ -280,10 +285,6 @@ class MasterScoreService:
         )
 
     def _prepare_numeric_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Keep preprocessing minimal so scoring behaves like the reference code.
-        Only columns that are clearly numeric in calculations are normalized here.
-        """
         df = df.copy()
 
         numeric_cols = [
@@ -320,102 +321,94 @@ class MasterScoreService:
         return df
 
     # ============================================================
-    # EXACT REFERENCE FUNCTIONS
+    # NEW SCORE FUNCTIONS
     # ============================================================
 
-    def _calc_poc_cluster_score(self, df: pd.DataFrame, params: Dict) -> pd.Series:
-        def cluster(group: pd.DataFrame):
-            n = group["FRVP_HIGHEST_DATE"].nunique()
-            vals = group["FRVP_POC"].values
+    def _calc_poc_cluster_bonus(self, df: pd.DataFrame) -> np.ndarray:
+        def cluster_bonus(g: pd.DataFrame):
+            g_unique = g.drop_duplicates(subset=["FRVP_HIGHEST_DATE"]).copy()
+            count = len(g_unique)
 
-            if n == 1:
-                return 3
+            if count < 2:
+                return 0
 
-            spread = (vals.max() - vals.min()) / vals.min()
+            pocs = g_unique["FRVP_POC"].dropna().astype(float).values
+            if len(pocs) < 2:
+                return 0
 
-            if n >= 3:
-                if spread == 0:
+            spread = (pocs.max() - pocs.min()) / pocs.min()
+
+            if spread <= 0.02:
+                if count >= 4:
+                    return 15
+                elif count == 3:
                     return 10
-                elif spread <= params["poc_cluster_max_spread"]:
-                    return 3 + (1 - spread / params["poc_cluster_max_spread"]) * 7
-                else:
-                    return 3
-
-            if n == 2:
-                if spread == 0:
-                    return 7
-                elif spread <= params["poc_cluster_max_spread"]:
-                    return 3 + (1 - spread / params["poc_cluster_max_spread"]) * 4
-                else:
-                    return 3
+                elif count == 2:
+                    return 5
 
             return 0
 
-        cluster_scores = (
-            df.groupby(["EXCHANGE", "SYMBOL"])
-            .apply(cluster)
-            .rename("cluster_score")
+        bonus_df = (
+            df.groupby(["EXCHANGE", "SYMBOL"], group_keys=False)
+            .apply(lambda g: pd.Series({"score7": cluster_bonus(g)}))
             .reset_index()
         )
 
-        df2 = df.merge(cluster_scores, on=["EXCHANGE", "SYMBOL"], how="left")
-        return df2["cluster_score"]
+        out = df.merge(bonus_df, on=["EXCHANGE", "SYMBOL"], how="left")
+        return out["score7"].fillna(0).to_numpy()
 
     def _calc_mfi_new(self, df: pd.DataFrame) -> np.ndarray:
-        return (
-            np.where(df["MFI"] > df["MFI_YESTERDAY"], 25, 0) +
-            np.where(df["MFI"] > df["MFI_12DAY_AVG"], 50, 0) +
+        mfi = pd.to_numeric(df["MFI"], errors="coerce").fillna(0)
+        mfi_yesterday = pd.to_numeric(df["MFI_YESTERDAY"], errors="coerce").fillna(0)
+        mfi_avg = pd.to_numeric(df["MFI_12DAY_AVG"], errors="coerce").fillna(0)
+
+        base = (
+            np.where(mfi > mfi_yesterday, 25, 0) +
+            np.where(mfi > mfi_avg, 50, 0) +
             np.where(df["MFI_DIRECTION"] == "Upward", 25, 0)
         )
+
+        scaled = (base / 100) * 70
+        final = np.where(mfi > 80, scaled + 30, scaled)
+
+        return np.clip(final, 0, 100)
 
     def _calc_rsi_new(self, df: pd.DataFrame, params: Dict) -> np.ndarray:
         rsi = self._to_float(df["RSI"])
         rsi_ma = pd.to_numeric(df["RSI_MA"], errors="coerce")
 
-        status = pd.to_numeric(df["RSI_STATUS"], errors="coerce").fillna(0)
-        days = pd.to_numeric(df["RSI_CROSS_DAYS_AGO"], errors="coerce").fillna(0)
-
         score1 = np.where(rsi > rsi_ma, 70, 0)
 
+        raw_days = df["RSI_CROSS_DAYS_AGO"]
         score2 = np.where(
-            (status == 1) & (days <= params["rsi_cross_max_days"]),
-            np.maximum(0, 15 - days),
+            (df["RSI_STATUS"] == 1) & (raw_days <= 14),
+            np.maximum(0, 15 - raw_days),
             0
         )
 
         score3 = np.where((rsi >= 30) & (rsi <= 70), 15, 0)
 
         return np.clip(score1 + score2 + score3, 0, 100)
-    
-    
+
     def _calc_ema_new(self, df: pd.DataFrame) -> np.ndarray:
-        status_5_20 = pd.to_numeric(df["EMA_STATUS_5_20"], errors="coerce").fillna(0)
-        cross_5_20 = pd.to_numeric(df["EMA_CROSS_5_20"], errors="coerce").fillna(0)
-        days_5_20 = pd.to_numeric(df["EMA_DAYS_SINCE_CROSS_5_20"], errors="coerce").fillna(0)
-
-        status_3_20 = pd.to_numeric(df["EMA_STATUS_3_20"], errors="coerce").fillna(0)
-        cross_3_20 = pd.to_numeric(df["EMA_CROSS_3_20"], errors="coerce").fillna(0)
-        days_3_20 = pd.to_numeric(df["EMA_DAYS_SINCE_CROSS_3_20"], errors="coerce").fillna(0)
-
-        status_3_14 = pd.to_numeric(df["EMA_STATUS_3_14"], errors="coerce").fillna(0)
-        cross_3_14 = pd.to_numeric(df["EMA_CROSS_3_14"], errors="coerce").fillna(0)
-        days_3_14 = pd.to_numeric(df["EMA_DAYS_SINCE_CROSS_3_14"], errors="coerce").fillna(0)
-
         def ema_score(status, cross, days):
-            
+            status = pd.to_numeric(status, errors="coerce").fillna(0)
+            cross = pd.to_numeric(cross, errors="coerce").fillna(0)
+            days = pd.to_numeric(days, errors="coerce").fillna(0)
+
             return np.where(
                 (status == 1) & (cross == 1),
                 np.maximum(0, 3 - (days / 10)),
-                0.0
+                0
             )
 
         total = (
-            ema_score(status_5_20, cross_5_20, days_5_20) +
-            ema_score(status_3_20, cross_3_20, days_3_20) +
-            ema_score(status_3_14, cross_3_14, days_3_14)
+            ema_score(df["EMA_STATUS_5_20"], df["EMA_CROSS_5_20"], df["EMA_DAYS_SINCE_CROSS_5_20"]) +
+            ema_score(df["EMA_STATUS_3_20"], df["EMA_CROSS_3_20"], df["EMA_DAYS_SINCE_CROSS_3_20"]) +
+            ema_score(df["EMA_STATUS_3_14"], df["EMA_CROSS_3_14"], df["EMA_DAYS_SINCE_CROSS_3_14"])
         )
 
-        return np.clip((total / 9.0) * 100.0, 0.0, 100.0)
+        return np.clip((total / 9) * 100, 0, 100)
 
     def _calc_volume_new(self, df: pd.DataFrame) -> np.ndarray:
         vol_last = self._to_float(df["VOL_LASTDAY"])
@@ -432,8 +425,8 @@ class MasterScoreService:
         )
 
     def _calc_vwap_new(self, df: pd.DataFrame, params: Dict) -> np.ndarray:
-        close = df["FRVP_LATEST_CLOSE_VALUE"]
-        vwap = df["VWAP"]
+        close = pd.to_numeric(df["FRVP_LATEST_CLOSE_VALUE"], errors="coerce")
+        vwap = pd.to_numeric(df["VWAP"], errors="coerce")
 
         dist = np.abs(close - vwap) / vwap
 
@@ -451,49 +444,57 @@ class MasterScoreService:
             100
         )
 
-    def _calc_poc_frvp_new(self, df: pd.DataFrame, params: Dict) -> np.ndarray:
-        close = df["FRVP_LATEST_CLOSE_VALUE"]
-        poc = df["FRVP_POC"]
-        val = df["FRVP_VAL"]
-        vah = df["FRVP_VAH"]
+    def _calc_poc_frvp_new(self, df: pd.DataFrame) -> np.ndarray:
+        close = pd.to_numeric(df["FRVP_LATEST_CLOSE_VALUE"], errors="coerce").astype(float)
+        poc = pd.to_numeric(df["FRVP_POC"], errors="coerce").astype(float)
+        val = pd.to_numeric(df["FRVP_VAL"], errors="coerce").astype(float)
+        vah = pd.to_numeric(df["FRVP_VAH"], errors="coerce").astype(float)
+        bs_open = pd.to_numeric(df["BS_OPEN_PRICE"], errors="coerce").astype(float)
 
-        score1 = np.clip(
-            (1 - ((close - poc) / poc) / params["poc_close_distance_limit"]) * 5,
-            0,
-            5
+        value_range = vah - val
+
+        dist_close_poc = np.abs(close - poc)
+        score1 = np.where(
+            dist_close_poc <= (value_range * 0.05),
+            10,
+            np.where(
+                dist_close_poc <= (value_range * 0.80),
+                (1 - (dist_close_poc - value_range * 0.05) / (value_range * 0.75)) * 10,
+                0
+            )
         )
+        score1 = np.clip(score1, 0, 10)
 
-        score2 = self._calc_poc_cluster_score(df, params)
+        score2 = self._calc_poc_cluster_bonus(df)
 
         score3 = np.where(df["BS_BAR_STATUS"] == "GREEN", 5, 0)
 
         score4 = np.where(
-            (df["BS_OPEN_PRICE"] > poc) &
-            (df["BS_BAR_STATUS"] == "GREEN"),
+            (bs_open > poc) & (df["BS_BAR_STATUS"] == "GREEN"),
             5,
             0
         )
 
-        score5 = np.clip(
-            (1 - np.abs(poc - val) / val / params["poc_val_distance_limit"]) * 5,
-            0,
-            5
-        )
-
-        dist_vah = np.abs(poc - vah) / vah
-        score6 = np.where(
-            dist_vah >= params["poc_vah_far_threshold"],
+        dist_poc_val = np.abs(poc - val)
+        score5 = np.where(
+            dist_poc_val <= (value_range * 0.10),
             5,
             np.where(
-                dist_vah <= params["poc_vah_near_threshold"],
-                0,
-                ((dist_vah - params["poc_vah_near_threshold"]) / (params["poc_vah_far_threshold"] - params["poc_vah_near_threshold"])) * 5
+                dist_poc_val <= (value_range * 0.40),
+                (1 - (dist_poc_val - value_range * 0.10) / (value_range * 0.30)) * 5,
+                0
             )
         )
+        score5 = np.clip(score5, 0, 5)
 
-        total = score1 + score2 + score3 + score4 + score5 + score6
+        total = score1 + score2 + score3 + score4 + score5
+        final_score = np.clip((total / 40) * 100, 0, 100)
 
-        return np.clip((total / 35) * 100, 0, 100)
+        return final_score
+
+    # ============================================================
+    # TRADE LEVELS
+    # ============================================================
 
     def _calculate_trade_levels(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
         df = df.copy()
@@ -533,10 +534,14 @@ class MasterScoreService:
 
         return df
 
+    # ============================================================
+    # MAIN SCORE CALC
+    # ============================================================
+
     def _calculate_scores(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
         df = df.copy()
 
-        df["poc_frvp_status"] = self._calc_poc_frvp_new(df, params)
+        df["poc_frvp_status"] = self._calc_poc_frvp_new(df)
         df["vwap_status"] = self._calc_vwap_new(df, params)
         df["ema_status"] = self._calc_ema_new(df)
         df["rsi_status"] = self._calc_rsi_new(df, params)
@@ -563,30 +568,35 @@ class MasterScoreService:
         df["stop_loss"] = df["entry_price"] * (1 - (params["stop_loss_perc"] / 100.0))
 
         df = self._calculate_trade_levels(df, params)
-        
-        cols = ['EXCHANGE', 'SYMBOL', 'FRVP_INTERVAL', 'FRVP_PERIOD_TYPE',
-       'poc_frvp_status', 'vwap_status', 'ema_status', 'rsi_status',
-       'mfi_status', 'vol_status', 'master_score', 'watchlist', 'entry_price',
-       'stop_loss', 'target_price', 'target_pct', 'risk_pct', 'rr_ratio',
-       'pivot_display']
-        df_all_status = df[cols]
-        df_all_status['RUNTIME'] = datetime.now().strftime("%Y-%m-%d %H:%M")
-        
+
+        cols = [
+            "EXCHANGE", "SYMBOL", "FRVP_INTERVAL", "FRVP_PERIOD_TYPE",
+            "poc_frvp_status", "vwap_status", "ema_status", "rsi_status",
+            "mfi_status", "vol_status", "master_score", "watchlist", "entry_price",
+            "stop_loss", "target_price", "target_pct", "risk_pct", "rr_ratio",
+            "pivot_display"
+        ]
+        df_all_status = df[cols].copy()
+        df_all_status["RUNTIME"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
         exchange = params["exchange"]
         if exchange == "EURONEXT":
-            name = 'ams'
-        elif  exchange == "BINANCE":
-            name = 'crypto'
+            name = "ams"
+        elif exchange == "BINANCE":
+            name = "crypto"
         else:
-            name = params["exchange"].lower()
+            name = exchange.lower()
 
-        fn_write_cloud(df_all_status,'gold',f'{name}_ind_all_scores','replace')
+        fn_write_cloud(df_all_status, "gold", f"{name}_ind_all_scores", "replace")
         return df
+
+    # ============================================================
+    # TRIAGE
+    # ============================================================
 
     def _calculate_triage_selection(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
         df_filtered = df[
-            (df["BS_CLOSE_PRICE"] > df["FRVP_POC"]) &
-            (df["BS_BAR_STATUS"] == "GREEN")
+            (df["BS_CLOSE_PRICE"] > df["FRVP_POC"])
         ].copy()
 
         if df_filtered.empty:
@@ -604,38 +614,19 @@ class MasterScoreService:
 
             avg_score = g_unique["master_score"].mean()
 
-            pocs = g_unique["FRVP_POC"].values
-            if len(pocs) > 1:
-                spread = (max(pocs) - min(pocs)) / min(pocs)
-            else:
-                spread = 999
-
-            if spread <= params["triage_bonus_max_spread"]:
-                if count >= 4:
-                    final_score = avg_score * 1.20
-                elif count == 3:
-                    final_score = avg_score * 1.10
-                elif count == 2:
-                    final_score = avg_score * 1.05
-                else:
-                    final_score = avg_score
-            else:
-                final_score = avg_score
-
             poc_counts = g["FRVP_POC"].value_counts()
             max_freq = poc_counts.max()
             dominant_pocs = poc_counts[poc_counts == max_freq].index
             avg_poc = np.mean(dominant_pocs)
 
-            avg_entry = g["entry_price"].mean()
-            avg_stop = g["stop_loss"].mean()
-            avg_target = g["target_price"].mean()
+            last_close = pd.to_numeric(g["BS_CLOSE_PRICE"], errors="coerce").iloc[-1]
 
-            if avg_entry != 0:
-                risk_pct = ((avg_entry - avg_stop) / avg_entry) * 100
-                target_pct = ((avg_target - avg_entry) / avg_entry) * 100
+            stop_loss_price = last_close * (1 - (params["stop_loss_perc"] / 100.0))
+            avg_target = pd.to_numeric(g["target_price"], errors="coerce").mean()
+
+            if pd.notna(last_close) and last_close != 0:
+                target_pct = ((avg_target - last_close) / last_close) * 100
             else:
-                risk_pct = 0
                 target_pct = 0
 
             triage_day = pd.to_datetime(
@@ -647,14 +638,14 @@ class MasterScoreService:
                 "EXCHANGE": exchange,
                 "SYMBOL": symbol,
                 "TRIAGE_ENTRY_DAY": triage_day,
-                "MASTER_SCORE": round(min(100, final_score), 2),
+                "MASTER_SCORE": round(min(100, avg_score), 2),
                 "VALID_CLUSTER_COUNT": count,
                 "AVG_POC": f"{avg_poc:.2f}".replace(".", ","),
-                "ENTRY_PRICE": f"{avg_entry:.2f}".replace(".", ","),
-                "STOP_LOSS": f"{avg_stop:.2f}".replace(".", ","),
+                "ENTRY_PRICE": f"{last_close:.2f}".replace(".", ","),
+                "STOP_LOSS": f"{stop_loss_price:.2f}".replace(".", ","),
                 "TARGET_PRICE": f"{avg_target:.2f}".replace(".", ","),
-                "STOP_LOSS_PERC": f"-{risk_pct:.2f}%".replace(".", ","),
-                "TARGET_PERC": f"+{target_pct:.2f}%".replace(".", ","),
+                "STOP_LOSS_PERC": f"-{params['stop_loss_perc']:.2f}%".replace(".", ","),
+                "TARGET_PERC": f"{target_pct:.2f}%".replace(".", ","),
                 "CREATED_DAY": created_day,
                 "CREATED_AT": created_at,
             })
@@ -662,10 +653,8 @@ class MasterScoreService:
         result_df = pd.DataFrame(results)
         result_df = result_df.sort_values("MASTER_SCORE", ascending=False)
 
-        # return result_df.head(params["top_n"])
         return result_df
-    
-    
+
     def _add_rank_column(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
         if df.empty:
             return df
@@ -688,7 +677,7 @@ class MasterScoreService:
         out.loc[eligible_df["index"], "RANK"] = eligible_df["RANK"].values
 
         return out
-    
+
     def _add_days_after_poc_column(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
         if df.empty:
             return df
@@ -751,8 +740,9 @@ class MasterScoreService:
         out = out.drop(columns=["AVG_POC_NUM"])
 
         return out
+
     # ============================================================
-    # OUTPUT / LOG / TELEGRAM
+    # OUTPUT / TELEGRAM
     # ============================================================
 
     def _format_output_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -782,17 +772,18 @@ class MasterScoreService:
 
         return df[existing + remaining]
 
-
-    def _build_telegram_text(self, df: pd.DataFrame, exchange: str,top_n:int) -> str:
+    def _build_telegram_text(self, df: pd.DataFrame, exchange: str, top_n: int) -> str:
         if df.empty:
             return f"[MASTER-SCORE] {exchange} | No candidates found."
 
         lines: List[str] = []
         df_top_n = df.sort_values(by="RANK", ascending=True).head(top_n)
+
         for idx, row in enumerate(df_top_n.itertuples(index=False), start=1):
             lines.append(
                 f"{idx}) {row.EXCHANGE}:{row.SYMBOL} | "
                 f"MasterScore: {row.MASTER_SCORE} | "
-                f"StopLoss: {row.STOP_LOSS} | ")
+                f"StopLoss: {row.STOP_LOSS} | "
+            )
 
         return "\n".join(lines)
