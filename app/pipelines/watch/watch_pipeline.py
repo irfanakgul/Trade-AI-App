@@ -53,7 +53,6 @@ async def run_watch_pipeline(
         svc = WatchDatasetBuildService(
         repo=repo,
         cfg=WatchDatasetBuildConfig(
-            job_name=f"watch_{exc_name}_pipeline",
             exchange=exchange,
             source_schema="gold",
             source_table=f"{exc_name}_evaluation_master_score",
@@ -62,7 +61,7 @@ async def run_watch_pipeline(
             target_table=f"{exc_name}_watch_dataset",
             max_retries=3,
             retry_wait_seconds=3,
-            tv_n_bars=1000,
+            tv_n_bars=500,
             top_n=top_n,
         ),
     )

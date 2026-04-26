@@ -34,10 +34,11 @@ async def main():
         signal_open_hour=9,
         signal_open_minute=0,
         signal_close_hour=9,
-        signal_close_minute=35,
+        signal_close_minute=30,
         top_n = 10
     )
 
+# asyncio.run(main())
 
 if __name__ == "__main__":
     try:

@@ -32,9 +32,9 @@ async def main():
         flags=flags,
         exchange="BIST",
         exc_name="bist",
-        signal_open_hour=10,
+        signal_open_hour=9,
         signal_open_minute=0,
-        signal_close_hour=10,
+        signal_close_hour=9,
         signal_close_minute=30,
         top_n = 10
     )
