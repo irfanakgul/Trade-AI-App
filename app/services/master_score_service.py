@@ -325,26 +325,44 @@ class MasterScoreService:
     # ============================================================
 
     def _calc_poc_cluster_bonus(self, df: pd.DataFrame) -> np.ndarray:
+        def is_close(a, b, tol=0.02):
+            return abs(a - b) / min(a, b) <= tol
+    
         def cluster_bonus(g: pd.DataFrame):
+           
             g_unique = g.drop_duplicates(subset=["FRVP_HIGHEST_DATE"]).copy()
-            count = len(g_unique)
+            pocs = g_unique["FRVP_POC"].dropna().astype(float).values
+            count = len(pocs)
 
             if count < 2:
                 return 0
 
-            pocs = g_unique["FRVP_POC"].dropna().astype(float).values
-            if len(pocs) < 2:
-                return 0
+            # pairwise 
+            close_matrix = [
+                [is_close(pocs[i], pocs[j]) for j in range(count)]
+                for i in range(count)
+            ]
 
-            spread = (pocs.max() - pocs.min()) / pocs.min()
+            close_counts = [sum(row) for row in close_matrix]
+            max_cluster = max(close_counts)
 
-            if spread <= 0.02:
-                if count >= 4:
+            if count >= 4:
+                if max_cluster >= 4:
                     return 15
-                elif count == 3:
+                elif max_cluster == 3:
+                    return 12
+                elif max_cluster == 2:
                     return 10
-                elif count == 2:
-                    return 5
+
+            elif count == 3:
+                if max_cluster == 3:
+                    return 10
+                elif max_cluster == 2:
+                    return 8
+
+            elif count == 2:
+                if max_cluster == 2:
+                    return 7
 
             return 0
 
@@ -377,7 +395,7 @@ class MasterScoreService:
         rsi = self._to_float(df["RSI"])
         rsi_ma = pd.to_numeric(df["RSI_MA"], errors="coerce")
 
-        score1 = np.where(rsi > rsi_ma, 70, 0)
+        score1 = np.where(rsi > rsi_ma, 80, 0)
 
         raw_days = df["RSI_CROSS_DAYS_AGO"]
         score2 = np.where(
@@ -396,16 +414,15 @@ class MasterScoreService:
             cross = pd.to_numeric(cross, errors="coerce").fillna(0)
             days = pd.to_numeric(days, errors="coerce").fillna(0)
 
-            return np.where(
-                (status == 1) & (cross == 1),
-                np.maximum(0, 3 - (days / 10)),
-                0
+            return (
+            np.where(status == 1, 2, 0) +
+            np.where((status == 1) & (cross == 1) & (days < 3), 1, 0)
             )
 
         total = (
-            ema_score(df["EMA_STATUS_5_20"], df["EMA_CROSS_5_20"], df["EMA_DAYS_SINCE_CROSS_5_20"]) +
-            ema_score(df["EMA_STATUS_3_20"], df["EMA_CROSS_3_20"], df["EMA_DAYS_SINCE_CROSS_3_20"]) +
-            ema_score(df["EMA_STATUS_3_14"], df["EMA_CROSS_3_14"], df["EMA_DAYS_SINCE_CROSS_3_14"])
+            ema_score(status_5_20, cross_5_20, days_5_20) +
+            ema_score(status_3_20, cross_3_20, days_3_20) +
+            ema_score(status_3_14, cross_3_14, days_3_14)
         )
 
         return np.clip((total / 9) * 100, 0, 100)
