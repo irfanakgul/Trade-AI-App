@@ -40,7 +40,7 @@ jobs:
 
   - name: crypto_hourly
     run_days: [MON, TUE, WED, THU, FRI, SAT, SUN]
-    at: "23:57"
+    at: "22:00"
     cmd: ".venv/bin/python -u main_crypto_hourly_data.py"
     lock: "crypto_hourly_lock"
 
@@ -48,19 +48,19 @@ jobs:
 # watch pipelines
   - name: watch_bist_pp
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "11:01"
+    at: "09:32"
     cmd: ".venv/bin/python -u main_watch_bist.py"
     lock: "watch_bist_pp_lock"
     
   - name: watch_ams_pp
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "09:46"
+    at: "09:36"
     cmd: ".venv/bin/python -u main_watch_ams.py"
     lock: "watch_ams_pp_lock"
 
   - name: watch_nasdaq_pp
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "15:46"
+    at: "16:00"
     cmd: ".venv/bin/python -u main_watch_nasdaq.py"
     lock: "watch_nasdaq_pp_lock"
 
@@ -72,6 +72,6 @@ jobs:
 
   - name: watch_crypto_pp
     run_days: [MON, TUE, WED, THU, FRI]
-    at: "10:00"
+    at: "22:30"
     cmd: ".venv/bin/python -u main_watch_crypto.py"
     lock: "watch_crypto_pp_lock"

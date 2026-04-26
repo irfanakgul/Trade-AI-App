@@ -638,7 +638,7 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
             send_telegram=True,
             telegram_title=f"{exchange} TOP 10",
             rank_master_score_min=50,
-            rank_days_after_poc_max=8,
+            rank_days_after_poc_max=350,
             rank_default_value=99999,
 
         )

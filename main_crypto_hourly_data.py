@@ -25,26 +25,26 @@ async def main():
         ingest=True,
         sync_archive_to_working = True,
         trim_history = True,
-        build_focus_dataset= False,
-        run_dq = False,
+        build_focus_dataset= True,
+        run_dq = True,
 
         #=================================================================#
         # INDICATOR FLAGS
         #=================================================================#
 
-        bar_status=False,
-        run_frvp=False,
-        run_convert_daily = False,
-        run_ema_ind = False,
-        run_vwap_ind = False,
-        run_rsi_ind = False,
-        run_mfi_ind = False,
-        run_pivot_ind = False,
-        run_source_end_dates_ind = False,
-        run_combined_indicators = False,
-        run_master_score = False,
-        run_master_final_combined = False,
-        run_watch_realised_close = False,
+        bar_status=True,
+        run_frvp=True,
+        run_convert_daily = True,
+        run_ema_ind = True,
+        run_vwap_ind = True,
+        run_rsi_ind = True,
+        run_mfi_ind = True,
+        run_pivot_ind = True,
+        run_source_end_dates_ind = True,
+        run_combined_indicators = True,
+        run_master_score = True,
+        run_master_final_combined = True,
+        run_watch_realised_close = True,
 
 
 

@@ -33,9 +33,9 @@ async def main():
         flags=flags,
         exchange="BINANCE",
         exc_name="crypto",
-        signal_open_hour=9,
-        signal_open_minute=0,
-        signal_close_hour=10,
+        signal_open_hour=22,
+        signal_open_minute=1,
+        signal_close_hour=22,
         signal_close_minute=45,
         top_n = 10
     )

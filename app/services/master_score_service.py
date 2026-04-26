@@ -669,7 +669,7 @@ class MasterScoreService:
             (master_score >= params["rank_master_score_min"]) &
             (days_after_poc <= params["rank_days_after_poc_max"])
         )
-
+        
         eligible_df = out.loc[eligible_mask].copy()
         eligible_df = eligible_df.sort_values("MASTER_SCORE", ascending=False).reset_index()
         eligible_df["RANK"] = range(1, len(eligible_df) + 1)
