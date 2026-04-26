@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from app.infrastructure.database.repository import PostgresRepository
-from app.services.telegram_bot_chat_service import telegram_send_message  # type: ignore
+from app.services.telegram_bot_chat_service import telegram_send_message, telegram_send_document  # type: ignore
 from app.infrastructure.database.db_connector import fn_write_cloud
 
 
@@ -212,10 +212,10 @@ class MasterScoreService:
                 title=params["telegram_title"],
                 text=telegram_text,
             )
+
             telegram_send_document(
                 file_path=log_file,
-                title="📊 TECH LOG",
-                channel="pipeline"
+                title="📊 TECH LOG"
             )
 
         return output_df
@@ -426,9 +426,9 @@ class MasterScoreService:
             )
 
         total = (
-            ema_score(status_5_20, cross_5_20, days_5_20) +
-            ema_score(status_3_20, cross_3_20, days_3_20) +
-            ema_score(status_3_14, cross_3_14, days_3_14)
+            ema_score(df["EMA_STATUS_5_20"], df["EMA_CROSS_5_20"], df["EMA_DAYS_SINCE_CROSS_5_20"]) +
+            ema_score(df["EMA_STATUS_3_20"], df["EMA_CROSS_3_20"], df["EMA_DAYS_SINCE_CROSS_3_20"]) +
+            ema_score(df["EMA_STATUS_3_14"], df["EMA_CROSS_3_14"], df["EMA_DAYS_SINCE_CROSS_3_14"])
         )
 
         return np.clip((total / 9) * 100, 0, 100)
@@ -764,7 +764,7 @@ class MasterScoreService:
 
         return out
     
-    def _log_technical_summary(df, log_file="tech_log.txt"):
+    def _log_technical_summary(self, df, log_file="tech_log.txt"):
 
 
         def f2(x):
@@ -777,7 +777,7 @@ class MasterScoreService:
                 df.sort_values(["CREATED_DAY","TRIAGE_SCORE"], ascending=[True, False])
                 .drop_duplicates(subset=["EXCHANGE","SYMBOL","CREATED_DAY"])
             )
-
+# master-triage_score sorunsalina bakmak lazim
             df_sorted = df_base.groupby("CREATED_DAY").head(20)
 
             for _, base_row in df_sorted.iterrows():
