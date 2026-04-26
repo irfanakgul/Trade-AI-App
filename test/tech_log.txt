@@ -5,41 +5,88 @@
 
 🏆 TRADEOPS_RANK: 1 | TRIAGE_SCORE: 68.23
 
-📊 Cluster Sayısı: 3
-AVG_POC: 42,32 | STOP_LOSS: 44,39 | TARGET: 50,00
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-16 12:00:00 | POC:42.32 | VAL:38.08 | VAH:43.44 | VWAP:41.73
-6months | 2025-10-31 14:00:00 | POC:42.32 | VAL:40.30 | VAH:52.35 | VWAP:45.69
-1year | 2025-09-26 10:00:00 | POC:42.32 | VAL:39.09 | VAH:52.35 | VWAP:47.63
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:45.76 | Open:45.28
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-16 12:00:00
+
+VAL: 38.08 | POC: 42.32 | VAH: 43.44
+VWAP: 41.73
+
+score1 (close→poc): 2.11
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 22.11 → FINAL_poc puan: 55.26
+
+📊 VWAP
+VWAP_PUAN:93.15"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2025-10-31 14:00:00
+
+VAL: 40.30 | POC: 42.32 | VAH: 52.35
+VWAP: 45.69
+
+score1 (close→poc): 6.86
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 3.88
+
+TOTAL: 30.74 → FINAL_poc puan: 76.84
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-09-26 10:00:00
+
+VAL: 39.09 | POC: 42.32 | VAH: 52.35
+VWAP: 47.63
+
+score1 (close→poc): 7.21
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 2.61
+
+TOTAL: 29.82 → FINAL_poc puan: 74.54
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:44.48 EMA5:43.69 EMA14:41.81 EMA20:41.35
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 44.48 | EMA5: 43.69 | EMA14: 41.81 | EMA20: 41.35
+EMA 5-20 Status: 1 | Cross: 0 | Days: 9
+EMA 3-20 Status: 1 | Cross: 0 | Days: 9
+EMA 3-14 Status: 1 | Cross: 0 | Days: 11
 
 📈 RSI
-RSI:70.39 | MA:53.93 | Status:1
+RSI_PUAN: 70.0
+RSI: 70.39 | RSI_MA: 53.93
+Status: 1 | Cross: 0 | Days Ago: 17
 
 💸 MFI
-Bugün:87.06 | Dün:79.83 | 12g Ort:59.94 | Yön:Upward
+MFI_PUAN: 100.0
+MFI: 87.06 | Yesterday: 79.83 | Avg12: 59.94
+Direction: Upward
 
 📦 VOLUME
-Bugün:2 444 084 | Dün:1 387 263
-Ort → 5g:1 180 502 | 10g:951 648 | 20g:711 206
-Durum:positive
-
-📌 PIVOT
-P:52.39 R1:48.63 R2:51.11 R3:53.58
-S1:43.69 S2:41.21 S3:38.74
-
-🧠 SCORE
-POC:55.26 VWAP:93.15 EMA:0.00
-RSI:70.00 MFI:100.00 VOL:100.00
+VOL_PUAN: 100.0
+Last: 2444084 | Avg5: 1180502.8 | Avg10: 951648.5 | Avg20: 711206.8
+Status: positive
 
 ------------------------------------------------------------
 
@@ -49,41 +96,88 @@ RSI:70.00 MFI:100.00 VOL:100.00
 
 🏆 TRADEOPS_RANK: 2 | TRIAGE_SCORE: 66.44
 
-📊 Cluster Sayısı: 3
-AVG_POC: 10,53 | STOP_LOSS: 10,48 | TARGET: 10,78
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-18 10:00:00 | POC:10.53 | VAL:9.70 | VAH:10.84 | VWAP:10.18
-1year | 2025-09-10 10:00:00 | POC:10.53 | VAL:9.60 | VAH:10.55 | VWAP:10.25
-2year | 2024-05-13 09:00:00 | POC:10.53 | VAL:8.44 | VAH:10.88 | VWAP:9.56
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:10.80 | Open:10.76
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-18 10:00:00
+
+VAL: 9.70 | POC: 10.53 | VAH: 10.84
+VWAP: 10.18
+
+score1 (close→poc): 7.51
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 27.51 → FINAL_poc puan: 68.77
+
+📊 VWAP
+VWAP_PUAN:21.81"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-09-10 10:00:00
+
+VAL: 9.60 | POC: 10.53 | VAH: 10.55
+VWAP: 10.25
+
+score1 (close→poc): 6.88
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 26.88 → FINAL_poc puan: 67.19
+
+📊 VWAP
+VWAP_PUAN:7.32"
+-------------------------------------------
+
+
+PERIOD: 2year
+HIGHEST_DATE: 2024-05-13 09:00:00
+
+VAL: 8.44 | POC: 10.53 | VAH: 10.88
+VWAP: 9.56
+
+score1 (close→poc): 9.19
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 29.19 → FINAL_poc puan: 72.98
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:10.75 EMA5:10.67 EMA14:10.36 EMA20:10.23
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 10.75 | EMA5: 10.67 | EMA14: 10.36 | EMA20: 10.23
+EMA 5-20 Status: 1 | Cross: 0 | Days: 11
+EMA 3-20 Status: 1 | Cross: 0 | Days: 11
+EMA 3-14 Status: 1 | Cross: 0 | Days: 13
 
 📈 RSI
-RSI:66.66 | MA:59.55 | Status:1
+RSI_PUAN: 70.0
+RSI: 66.66 | RSI_MA: 59.55
+Status: 1 | Cross: 0 | Days Ago: 16
 
 💸 MFI
-Bugün:84.62 | Dün:79.12 | 12g Ort:73.38 | Yön:Upward
+MFI_PUAN: 100.0
+MFI: 84.62 | Yesterday: 79.12 | Avg12: 73.38
+Direction: Upward
 
 📦 VOLUME
-Bugün:3 569 409 | Dün:2 260 489
-Ort → 5g:2 431 834 | 10g:2 388 886 | 20g:2 164 173
-Durum:negative
-
-📌 PIVOT
-P:10.07 R1:10.70 R2:11.14 R3:11.57
-S1:9.84 S2:9.40 S3:8.97
-
-🧠 SCORE
-POC:68.77 VWAP:21.81 EMA:0.00
-RSI:70.00 MFI:100.00 VOL:75.00
+VOL_PUAN: 75.0
+Last: 3569409 | Avg5: 2431834.6 | Avg10: 2388886.9 | Avg20: 2164173.35
+Status: negative
 
 ------------------------------------------------------------
 
@@ -91,88 +185,109 @@ RSI:70.00 MFI:100.00 VOL:75.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 3 | TRIAGE_SCORE: 66.12
+🏆 TRADEOPS_RANK: 3 | TRIAGE_SCORE: 66.40
 
-📊 Cluster Sayısı: 4
-AVG_POC: 7,46 | STOP_LOSS: 7,28 | TARGET: 8,75
+📊 Cluster: 4
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-01-29 08:00:00 | POC:7.46 | VAL:6.76 | VAH:8.07 | VWAP:7.54
-6months | 2025-12-10 08:00:00 | POC:7.46 | VAL:7.35 | VAH:8.36 | VWAP:7.97
-1year | 2025-08-26 09:00:00 | POC:7.46 | VAL:7.27 | VAH:9.00 | VWAP:8.44
-2year | 2024-05-06 09:00:00 | POC:7.46 | VAL:6.30 | VAH:12.58 | VWAP:11.04
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:7.51 | Open:7.42
+PERIOD: 3months
+HIGHEST_DATE: 2026-01-29 08:00:00
+
+VAL: 6.76 | POC: 7.46 | VAH: 8.07
+VWAP: 7.54
+
+score1 (close→poc): 10.00
+score2 (cluster): 15.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 0.00
+
+TOTAL: 30.00 → FINAL_poc puan: 75.00
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2025-12-10 08:00:00
+
+VAL: 7.35 | POC: 7.46 | VAH: 8.36
+VWAP: 7.97
+
+score1 (close→poc): 10.00
+score2 (cluster): 15.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 4.86
+
+TOTAL: 34.86 → FINAL_poc puan: 87.15
+
+📊 VWAP
+VWAP_PUAN:15.43"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-08-26 09:00:00
+
+VAL: 7.27 | POC: 7.46 | VAH: 9.00
+VWAP: 8.44
+
+score1 (close→poc): 10.00
+score2 (cluster): 15.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 4.84
+
+TOTAL: 34.84 → FINAL_poc puan: 87.10
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 2year
+HIGHEST_DATE: 2024-05-06 09:00:00
+
+VAL: 6.30 | POC: 7.46 | VAH: 12.58
+VWAP: 11.04
+
+score1 (close→poc): 10.00
+score2 (cluster): 15.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 3.59
+
+TOTAL: 33.59 → FINAL_poc puan: 83.97
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:7.50 EMA5:7.50 EMA14:7.35 EMA20:7.30
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 7.50 | EMA5: 7.50 | EMA14: 7.35 | EMA20: 7.30
+EMA 5-20 Status: 1 | Cross: 0 | Days: 9
+EMA 3-20 Status: 1 | Cross: 0 | Days: 10
+EMA 3-14 Status: 1 | Cross: 0 | Days: 10
 
 📈 RSI
-RSI:54.59 | MA:52.46 | Status:1
+RSI_PUAN: 74.0
+RSI: 54.59 | RSI_MA: 52.46
+Status: 1 | Cross: 0 | Days Ago: 11
 
 💸 MFI
-Bugün:69.34 | Dün:73.77 | 12g Ort:61.08 | Yön:Downward
+MFI_PUAN: 35.0
+MFI: 69.34 | Yesterday: 73.77 | Avg12: 61.08
+Direction: Downward
 
 📦 VOLUME
-Bugün:18 630 748 | Dün:11 829 412
-Ort → 5g:30 336 554 | 10g:29 236 167 | 20g:28 281 916
-Durum:negative
-
-📌 PIVOT
-P:8.97 R1:8.02 R2:8.38 R3:8.74
-S1:7.31 S2:6.95 S3:6.59
-
-🧠 SCORE
-POC:75.00 VWAP:0.00 EMA:0.00
-RSI:70.00 MFI:35.00 VOL:50.00
-
-------------------------------------------------------------
-
-===================== YAYLA =====================
-
-📅 Gün: 25-04-2026
-
-🏆 TRADEOPS_RANK: 4 | TRIAGE_SCORE: 61.81
-
-📊 Cluster Sayısı: 3
-AVG_POC: 24,02 | STOP_LOSS: 26,68 | TARGET: 31,63
-
-📍 POC + VWAP CLUSTERS:
-3months | 2026-01-26 08:00:00 | POC:24.02 | VAL:21.78 | VAH:27.32 | VWAP:25.90
-6months | 2025-12-02 08:00:00 | POC:24.02 | VAL:21.78 | VAH:29.98 | VWAP:29.18
-1year | 2025-08-21 12:00:00 | POC:24.02 | VAL:21.78 | VAH:33.06 | VWAP:31.58
-
-💰 PRICE
-Close:27.50 | Open:25.04
-
-📉 EMA
-EMA3:26.03 EMA5:25.38 EMA14:24.21 EMA20:24.00
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
-
-📈 RSI
-RSI:71.09 | MA:50.58 | Status:1
-
-💸 MFI
-Bugün:81.08 | Dün:74.74 | 12g Ort:67.53 | Yön:Upward
-
-📦 VOLUME
-Bugün:3 931 901 | Dün:5 860 739
-Ort → 5g:2 627 405 | 10g:2 116 294 | 20g:2 109 897
-Durum:negative
-
-📌 PIVOT
-P:34.17 R1:30.06 R2:31.91 R3:33.77
-S1:26.34 S2:24.49 S3:22.63
-
-🧠 SCORE
-POC:55.73 VWAP:23.55 EMA:0.00
-RSI:70.00 MFI:100.00 VOL:50.00
+VOL_PUAN: 50.0
+Last: 18630748 | Avg5: 30336554.4 | Avg10: 29236167.7 | Avg20: 28281916.55
+Status: negative
 
 ------------------------------------------------------------
 
@@ -180,43 +295,181 @@ RSI:70.00 MFI:100.00 VOL:50.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 5 | TRIAGE_SCORE: 61.72
+🏆 TRADEOPS_RANK: 4 | TRIAGE_SCORE: 62.49
 
-📊 Cluster Sayısı: 3
-AVG_POC: 9,50 | STOP_LOSS: 9,51 | TARGET: 10,80
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-03-10 10:00:00 | POC:9.60 | VAL:9.15 | VAH:10.41 | VWAP:10.34
-6months | 2025-10-28 07:30:00 | POC:9.50 | VAL:9.05 | VAH:11.30 | VWAP:10.68
-1year | 2025-10-10 08:00:00 | POC:9.50 | VAL:9.05 | VAH:11.65 | VWAP:11.09
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:9.80 | Open:9.60
+PERIOD: 3months
+HIGHEST_DATE: 2026-03-10 10:00:00
+
+VAL: 9.15 | POC: 9.60 | VAH: 10.41
+VWAP: 10.34
+
+score1 (close→poc): 8.55
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 0.71
+
+TOTAL: 24.26 → FINAL_poc puan: 60.66
+
+📊 VWAP
+VWAP_PUAN:4.45"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2025-10-28 07:30:00
+
+VAL: 9.05 | POC: 9.50 | VAH: 11.30
+VWAP: 10.68
+
+score1 (close→poc): 8.89
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 3.33
+
+TOTAL: 32.22 → FINAL_poc puan: 80.56
+
+📊 VWAP
+VWAP_PUAN:64.79"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-10-10 08:00:00
+
+VAL: 9.05 | POC: 9.50 | VAH: 11.65
+VWAP: 11.09
+
+score1 (close→poc): 9.13
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 3.78
+
+TOTAL: 32.91 → FINAL_poc puan: 82.28
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:9.71 EMA5:9.68 EMA14:9.73 EMA20:9.82
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 9.71 | EMA5: 9.68 | EMA14: 9.73 | EMA20: 9.82
+EMA 5-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-14 Status: 0 | Cross: 0 | Days: 0
 
 📈 RSI
-RSI:48.17 | MA:44.39 | Status:1
+RSI_PUAN: 81.0
+RSI: 48.17 | RSI_MA: 44.39
+Status: 1 | Cross: 0 | Days Ago: 4
 
 💸 MFI
-Bugün:36.91 | Dün:35.47 | 12g Ort:27.22 | Yön:Upward
+MFI_PUAN: 70.0
+MFI: 36.91 | Yesterday: 35.47 | Avg12: 27.22
+Direction: Upward
 
 📦 VOLUME
-Bugün:224 301 | Dün:221 018
-Ort → 5g:243 890 | 10g:326 121 | 20g:291 434
-Durum:negative
+VOL_PUAN: 25.0
+Last: 224301 | Avg5: 243890.6 | Avg10: 326121.1 | Avg20: 291434.15
+Status: negative
 
-📌 PIVOT
-P:10.62 R1:10.77 R2:11.65 R3:12.52
-S1:9.03 S2:8.15 S3:7.28
+------------------------------------------------------------
 
-🧠 SCORE
-POC:60.66 VWAP:4.45 EMA:0.00
-RSI:70.00 MFI:70.00 VOL:25.00
+===================== YAYLA =====================
+
+📅 Gün: 25-04-2026
+
+🏆 TRADEOPS_RANK: 5 | TRIAGE_SCORE: 61.81
+
+📊 Cluster: 3
+
+🧠 POC SCORE DETAIL
+
+PERIOD: 3months
+HIGHEST_DATE: 2026-01-26 08:00:00
+
+VAL: 21.78 | POC: 24.02 | VAH: 27.32
+VWAP: 25.90
+
+score1 (close→poc): 2.29
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 22.29 → FINAL_poc puan: 55.73
+
+📊 VWAP
+VWAP_PUAN:23.55"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2025-12-02 08:00:00
+
+VAL: 21.78 | POC: 24.02 | VAH: 29.98
+VWAP: 29.18
+
+score1 (close→poc): 5.01
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 2.11
+
+TOTAL: 27.12 → FINAL_poc puan: 67.80
+
+📊 VWAP
+VWAP_PUAN:15.15"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-08-21 12:00:00
+
+VAL: 21.78 | POC: 24.02 | VAH: 33.06
+VWAP: 31.58
+
+score1 (close→poc): 6.55
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 3.36
+
+TOTAL: 29.91 → FINAL_poc puan: 74.78
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+📉 EMA
+EMA_PUAN: 0.00
+EMA3: 26.03 | EMA5: 25.38 | EMA14: 24.21 | EMA20: 24.00
+EMA 5-20 Status: 1 | Cross: 0 | Days: 6
+EMA 3-20 Status: 1 | Cross: 0 | Days: 6
+EMA 3-14 Status: 1 | Cross: 0 | Days: 9
+
+📈 RSI
+RSI_PUAN: 70.0
+RSI: 71.09 | RSI_MA: 50.58
+Status: 1 | Cross: 0 | Days Ago: 17
+
+💸 MFI
+MFI_PUAN: 100.0
+MFI: 81.08 | Yesterday: 74.74 | Avg12: 67.53
+Direction: Upward
+
+📦 VOLUME
+VOL_PUAN: 50.0
+Last: 3931901 | Avg5: 2627405.4 | Avg10: 2116294.9 | Avg20: 2109897.85
+Status: negative
 
 ------------------------------------------------------------
 
@@ -226,41 +479,88 @@ RSI:70.00 MFI:70.00 VOL:25.00
 
 🏆 TRADEOPS_RANK: 6 | TRIAGE_SCORE: 60.06
 
-📊 Cluster Sayısı: 3
-AVG_POC: 13,06 | STOP_LOSS: 14,31 | TARGET: 13,56
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-13 15:00:00 | POC:13.24 | VAL:11.53 | VAH:13.68 | VWAP:13.00
-6months | 2025-10-28 07:30:00 | POC:13.06 | VAL:10.28 | VAH:13.41 | VWAP:12.44
-1year | 2025-10-07 09:00:00 | POC:13.06 | VAL:9.44 | VAH:13.58 | VWAP:13.38
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:14.75 | Open:13.55
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-13 15:00:00
+
+VAL: 11.53 | POC: 13.24 | VAH: 13.68
+VWAP: 13.00
+
+score1 (close→poc): 1.30
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 21.30 → FINAL_poc puan: 53.26
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2025-10-28 07:30:00
+
+VAL: 10.28 | POC: 13.06 | VAH: 13.41
+VWAP: 12.44
+
+score1 (close→poc): 3.47
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 23.47 → FINAL_poc puan: 58.67
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-10-07 09:00:00
+
+VAL: 9.44 | POC: 13.06 | VAH: 13.58
+VWAP: 13.38
+
+score1 (close→poc): 5.22
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 25.22 → FINAL_poc puan: 63.06
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:14.02 EMA5:13.71 EMA14:13.00 EMA20:12.78
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 14.02 | EMA5: 13.71 | EMA14: 13.00 | EMA20: 12.78
+EMA 5-20 Status: 1 | Cross: 0 | Days: 10
+EMA 3-20 Status: 1 | Cross: 0 | Days: 10
+EMA 3-14 Status: 1 | Cross: 0 | Days: 13
 
 📈 RSI
-RSI:75.60 | MA:58.73 | Status:1
+RSI_PUAN: 70.0
+RSI: 75.60 | RSI_MA: 58.73
+Status: 1 | Cross: 0 | Days Ago: 20
 
 💸 MFI
-Bugün:78.62 | Dün:74.48 | 12g Ort:67.10 | Yön:Upward
+MFI_PUAN: 70.0
+MFI: 78.62 | Yesterday: 74.48 | Avg12: 67.10
+Direction: Upward
 
 📦 VOLUME
-Bugün:6 179 969 | Dün:2 656 332
-Ort → 5g:3 162 950 | 10g:2 852 137 | 20g:2 500 016
-Durum:negative
-
-📌 PIVOT
-P:12.77 R1:10.49 R2:11.50 R3:12.50
-S1:8.49 S2:7.48 S3:6.48
-
-🧠 SCORE
-POC:53.26 VWAP:100.00 EMA:0.00
-RSI:70.00 MFI:70.00 VOL:100.00
+VOL_PUAN: 100.0
+Last: 6179969 | Avg5: 3162950.4 | Avg10: 2852137.7 | Avg20: 2500016.7
+Status: negative
 
 ------------------------------------------------------------
 
@@ -268,43 +568,90 @@ RSI:70.00 MFI:70.00 VOL:100.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 7 | TRIAGE_SCORE: 59.53
+🏆 TRADEOPS_RANK: 7 | TRIAGE_SCORE: 59.81
 
-📊 Cluster Sayısı: 3
-AVG_POC: 5,25 | STOP_LOSS: 5,21 | TARGET: 26,91
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-03-11 07:00:00 | POC:5.25 | VAL:4.98 | VAH:5.97 | VWAP:6.78
-6months | 2025-10-27 08:00:00 | POC:5.25 | VAL:4.98 | VAH:6.10 | VWAP:28.00
-1year | 2025-08-20 09:00:00 | POC:5.25 | VAL:4.98 | VAH:6.13 | VWAP:36.44
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:5.37 | Open:5.28
+PERIOD: 3months
+HIGHEST_DATE: 2026-03-11 07:00:00
+
+VAL: 4.98 | POC: 5.25 | VAH: 5.97
+VWAP: 6.78
+
+score1 (close→poc): 9.05
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 2.12
+
+TOTAL: 31.17 → FINAL_poc puan: 77.93
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2025-10-27 08:00:00
+
+VAL: 4.98 | POC: 5.25 | VAH: 6.10
+VWAP: 28.00
+
+score1 (close→poc): 9.24
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 2.65
+
+TOTAL: 31.89 → FINAL_poc puan: 79.72
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-08-20 09:00:00
+
+VAL: 4.98 | POC: 5.25 | VAH: 6.13
+VWAP: 36.44
+
+score1 (close→poc): 9.28
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 2.75
+
+TOTAL: 32.03 → FINAL_poc puan: 80.07
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:5.39 EMA5:5.40 EMA14:9.45 EMA20:19.00
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 5.39 | EMA5: 5.40 | EMA14: 9.45 | EMA20: 19.00
+EMA 5-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-14 Status: 0 | Cross: 0 | Days: 0
 
 📈 RSI
-RSI:15.09 | MA:14.63 | Status:1
+RSI_PUAN: 74.0
+RSI: 15.09 | RSI_MA: 14.63
+Status: 1 | Cross: 0 | Days Ago: 11
 
 💸 MFI
-Bugün:54.64 | Dün:59.90 | 12g Ort:47.13 | Yön:Downward
+MFI_PUAN: 35.0
+MFI: 54.64 | Yesterday: 59.90 | Avg12: 47.13
+Direction: Downward
 
 📦 VOLUME
-Bugün:20 435 081 | Dün:22 503 383
-Ort → 5g:33 339 461 | 10g:35 633 675 | 20g:34 333 393
-Durum:negative
-
-📌 PIVOT
-P:396.50 R1:268.73 R2:320.56 R3:372.38
-S1:165.07 S2:113.24 S3:61.41
-
-🧠 SCORE
-POC:77.93 VWAP:100.00 EMA:0.00
-RSI:70.00 MFI:35.00 VOL:0.00
+VOL_PUAN: 0.0
+Last: 20435081 | Avg5: 33339461.6 | Avg10: 35633675.3 | Avg20: 34333393.4
+Status: negative
 
 ------------------------------------------------------------
 
@@ -312,44 +659,109 @@ RSI:70.00 MFI:35.00 VOL:0.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 8 | TRIAGE_SCORE: 59.16
+🏆 TRADEOPS_RANK: 8 | TRIAGE_SCORE: 59.44
 
-📊 Cluster Sayısı: 4
-AVG_POC: 6572,50 | STOP_LOSS: 6465,05 | TARGET: 7941,58
+📊 Cluster: 4
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-01-26 08:00:00 | POC:6572.50 | VAL:6017.50 | VAH:7542.50 | VWAP:6659.38
-6months | 2025-11-03 12:00:00 | POC:6572.50 | VAL:6572.50 | VAH:7867.50 | VWAP:7140.66
-1year | 2025-04-28 10:00:00 | POC:6572.50 | VAL:6572.50 | VAH:8182.50 | VWAP:7671.42
-2year | 2024-05-02 09:00:00 | POC:6572.50 | VAL:6572.50 | VAH:10587.50 | VWAP:9411.73
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:6665.00 | Open:6672.50
+PERIOD: 3months
+HIGHEST_DATE: 2026-01-26 08:00:00
+
+VAL: 6017.50 | POC: 6572.50 | VAH: 7542.50
+VWAP: 6659.38
+
+score1 (close→poc): 9.86
+score2 (cluster): 15.00
+score3 (green): 0.00
+score4 (contactless): 0.00
+score5 (poc→val): 0.60
+
+TOTAL: 25.46 → FINAL_poc puan: 63.65
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2025-11-03 12:00:00
+
+VAL: 6572.50 | POC: 6572.50 | VAH: 7867.50
+VWAP: 7140.66
+
+score1 (close→poc): 9.71
+score2 (cluster): 15.00
+score3 (green): 0.00
+score4 (contactless): 0.00
+score5 (poc→val): 5.00
+
+TOTAL: 29.71 → FINAL_poc puan: 74.29
+
+📊 VWAP
+VWAP_PUAN:33.23"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-04-28 10:00:00
+
+VAL: 6572.50 | POC: 6572.50 | VAH: 8182.50
+VWAP: 7671.42
+
+score1 (close→poc): 9.90
+score2 (cluster): 15.00
+score3 (green): 0.00
+score4 (contactless): 0.00
+score5 (poc→val): 5.00
+
+TOTAL: 29.90 → FINAL_poc puan: 74.75
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 2year
+HIGHEST_DATE: 2024-05-02 09:00:00
+
+VAL: 6572.50 | POC: 6572.50 | VAH: 10587.50
+VWAP: 9411.73
+
+score1 (close→poc): 10.00
+score2 (cluster): 15.00
+score3 (green): 0.00
+score4 (contactless): 0.00
+score5 (poc→val): 5.00
+
+TOTAL: 30.00 → FINAL_poc puan: 75.00
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:6713.40 EMA5:6680.42 EMA14:6348.90 EMA20:6238.56
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 6713.40 | EMA5: 6680.42 | EMA14: 6348.90 | EMA20: 6238.56
+EMA 5-20 Status: 1 | Cross: 0 | Days: 6
+EMA 3-20 Status: 1 | Cross: 0 | Days: 7
+EMA 3-14 Status: 1 | Cross: 0 | Days: 9
 
 📈 RSI
-RSI:61.47 | MA:53.29 | Status:1
+RSI_PUAN: 74.0
+RSI: 61.47 | RSI_MA: 53.29
+Status: 1 | Cross: 0 | Days Ago: 11
 
 💸 MFI
-Bugün:79.85 | Dün:86.60 | 12g Ort:58.93 | Yön:Downward
+MFI_PUAN: 35.0
+MFI: 79.85 | Yesterday: 86.60 | Avg12: 58.93
+Direction: Downward
 
 📦 VOLUME
-Bugün:31 596 | Dün:22 298
-Ort → 5g:48 333 | 10g:38 716 | 20g:25 111
-Durum:negative
-
-📌 PIVOT
-P:8234.17 R1:8372.96 R2:8648.42 R3:8923.88
-S1:7822.04 S2:7546.58 S3:7271.12
-
-🧠 SCORE
-POC:63.65 VWAP:0.00 EMA:0.00
-RSI:70.00 MFI:35.00 VOL:50.00
+VOL_PUAN: 50.0
+Last: 31596 | Avg5: 48333.6 | Avg10: 38716.8 | Avg20: 25111.15
+Status: negative
 
 ------------------------------------------------------------
 
@@ -357,42 +769,71 @@ RSI:70.00 MFI:35.00 VOL:50.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 9 | TRIAGE_SCORE: 59.15
+🏆 TRADEOPS_RANK: 9 | TRIAGE_SCORE: 59.22
 
-📊 Cluster Sayısı: 2
-AVG_POC: 7,20 | STOP_LOSS: 7,68 | TARGET: 15,25
+📊 Cluster: 2
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-04-06 13:00:00 | POC:7.20 | VAL:6.71 | VAH:21.69 | VWAP:15.25
-2year | 2024-05-06 09:00:00 | POC:18.52 | VAL:12.00 | VAH:18.80 | VWAP:16.13
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:7.92 | Open:7.50
+PERIOD: 3months
+HIGHEST_DATE: 2026-04-06 13:00:00
+
+VAL: 6.71 | POC: 7.20 | VAH: 21.69
+VWAP: 15.25
+
+score1 (close→poc): 10.00
+score2 (cluster): 0.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 5.00
+
+TOTAL: 25.00 → FINAL_poc puan: 62.50
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 2year
+HIGHEST_DATE: 2024-05-06 09:00:00
+
+VAL: 12.00 | POC: 18.52 | VAH: 18.80
+VWAP: 16.13
+
+score1 (close→poc): 0.00
+score2 (cluster): 0.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 0.00
+
+TOTAL: 5.00 → FINAL_poc puan: 12.50
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:9.44 EMA5:11.75 EMA14:16.52 EMA20:17.53
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 9.44 | EMA5: 11.75 | EMA14: 16.52 | EMA20: 17.53
+EMA 5-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-14 Status: 0 | Cross: 0 | Days: 0
 
 📈 RSI
-RSI:73.83 | MA:70.05 | Status:1
+RSI_PUAN: 71.0
+RSI: 73.83 | RSI_MA: 70.05
+Status: 1 | Cross: 0 | Days Ago: 14
 
 💸 MFI
-Bugün:49.96 | Dün:48.61 | 12g Ort:64.64 | Yön:Upward
+MFI_PUAN: 35.0
+MFI: 49.96 | Yesterday: 48.61 | Avg12: 64.64
+Direction: Upward
 
 📦 VOLUME
-Bugün:1 410 816 | Dün:1 126 796
-Ort → 5g:855 520 | 10g:593 434 | 20g:485 794
-Durum:failed AVG VOL | highest in last 20 day
-
-📌 PIVOT
-P:16.39 R1:18.28 R2:19.38 R3:20.47
-S1:16.08 S2:14.98 S3:13.89
-
-🧠 SCORE
-POC:62.50 VWAP:100.00 EMA:0.00
-RSI:70.00 MFI:35.00 VOL:100.00
+VOL_PUAN: 100.0
+Last: 1410816 | Avg5: 855520.4 | Avg10: 593434.7 | Avg20: 485794.6
+Status: failed AVG VOL | highest in last 20 day
 
 ------------------------------------------------------------
 
@@ -400,42 +841,71 @@ RSI:70.00 MFI:35.00 VOL:100.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 10 | TRIAGE_SCORE: 58.03
+🏆 TRADEOPS_RANK: 10 | TRIAGE_SCORE: 58.80
 
-📊 Cluster Sayısı: 2
-AVG_POC: 32,74 | STOP_LOSS: 36,28 | TARGET: 39,66
+📊 Cluster: 2
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-01-27 09:00:00 | POC:32.74 | VAL:29.18 | VAH:41.04 | VWAP:38.35
-6months | 2026-01-21 09:00:00 | POC:32.74 | VAL:29.18 | VAH:43.90 | VWAP:40.10
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:37.40 | Open:36.26
+PERIOD: 3months
+HIGHEST_DATE: 2026-01-27 09:00:00
+
+VAL: 29.18 | POC: 32.74 | VAH: 41.04
+VWAP: 38.35
+
+score1 (close→poc): 5.43
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 1.66
+
+TOTAL: 22.09 → FINAL_poc puan: 55.23
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2026-01-21 09:00:00
+
+VAL: 29.18 | POC: 32.74 | VAH: 43.90
+VWAP: 40.10
+
+score1 (close→poc): 6.45
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 2.64
+
+TOTAL: 24.08 → FINAL_poc puan: 60.20
+
+📊 VWAP
+VWAP_PUAN:34.66"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:35.60 EMA5:34.65 EMA14:33.48 EMA20:33.50
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 35.60 | EMA5: 34.65 | EMA14: 33.48 | EMA20: 33.50
+EMA 5-20 Status: 1 | Cross: 0 | Days: 1
+EMA 3-20 Status: 1 | Cross: 0 | Days: 1
+EMA 3-14 Status: 1 | Cross: 0 | Days: 1
 
 📈 RSI
-RSI:60.56 | MA:44.30 | Status:1
+RSI_PUAN: 81.0
+RSI: 60.56 | RSI_MA: 44.30
+Status: 1 | Cross: 0 | Days Ago: 4
 
 💸 MFI
-Bugün:69.07 | Dün:65.71 | 12g Ort:48.16 | Yön:Upward
+MFI_PUAN: 70.0
+MFI: 69.07 | Yesterday: 65.71 | Avg12: 48.16
+Direction: Upward
 
 📦 VOLUME
-Bugün:908 261 | Dün:736 820
-Ort → 5g:603 666 | 10g:481 037 | 20g:465 773
-Durum:positive
-
-📌 PIVOT
-P:nan R1:nan R2:nan R3:nan
-S1:nan S2:nan S3:nan
-
-🧠 SCORE
-POC:55.23 VWAP:0.00 EMA:0.00
-RSI:70.00 MFI:70.00 VOL:100.00
+VOL_PUAN: 100.0
+Last: 908261 | Avg5: 603666.4 | Avg10: 481037.6 | Avg20: 465773.6
+Status: positive
 
 ------------------------------------------------------------
 
@@ -443,130 +913,90 @@ RSI:70.00 MFI:70.00 VOL:100.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 11 | TRIAGE_SCORE: 57.21
+🏆 TRADEOPS_RANK: 11 | TRIAGE_SCORE: 57.28
 
-📊 Cluster Sayısı: 3
-AVG_POC: 24,14 | STOP_LOSS: 25,16 | TARGET: 33,40
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-16 08:00:00 | POC:24.14 | VAL:22.54 | VAH:25.82 | VWAP:24.76
-6months | 2025-11-06 08:00:00 | POC:24.14 | VAL:22.56 | VAH:28.70 | VWAP:27.49
-1year | 2025-07-10 15:00:00 | POC:24.14 | VAL:20.82 | VAH:42.94 | VWAP:36.19
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:25.94 | Open:25.78
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-16 08:00:00
 
-📉 EMA
-EMA3:26.03 EMA5:26.02 EMA14:25.33 EMA20:24.96
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+VAL: 22.54 | POC: 24.14 | VAH: 25.82
+VWAP: 24.76
 
-📈 RSI
-RSI:70.25 | MA:60.78 | Status:1
+score1 (close→poc): 3.35
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
 
-💸 MFI
-Bugün:75.26 | Dün:74.50 | 12g Ort:71.57 | Yön:Upward
+TOTAL: 23.35 → FINAL_poc puan: 58.37
 
-📦 VOLUME
-Bugün:1 857 125 | Dün:2 700 013
-Ort → 5g:2 978 152 | 10g:4 130 354 | 20g:4 015 022
-Durum:negative
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
 
-📌 PIVOT
-P:33.73 R1:27.56 R2:30.06 R3:32.56
-S1:22.56 S2:20.06 S3:17.56
 
-🧠 SCORE
-POC:58.37 VWAP:0.00 EMA:0.00
-RSI:70.00 MFI:70.00 VOL:0.00
+PERIOD: 6months
+HIGHEST_DATE: 2025-11-06 08:00:00
 
-------------------------------------------------------------
+VAL: 22.56 | POC: 24.14 | VAH: 28.70
+VWAP: 27.49
 
-===================== YUNSA =====================
+score1 (close→poc): 6.76
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 2.38
 
-📅 Gün: 25-04-2026
+TOTAL: 29.14 → FINAL_poc puan: 72.84
 
-🏆 TRADEOPS_RANK: 12 | TRIAGE_SCORE: 56.38
+📊 VWAP
+VWAP_PUAN:12.77"
+-------------------------------------------
 
-📊 Cluster Sayısı: 2
-AVG_POC: 8,85 | STOP_LOSS: 8,79 | TARGET: 9,50
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-17 15:00:00 | POC:8.85 | VAL:8.02 | VAH:9.16 | VWAP:8.96
-2year | 2024-05-10 13:00:00 | POC:8.87 | VAL:6.65 | VAH:10.52 | VWAP:8.24
+PERIOD: 1year
+HIGHEST_DATE: 2025-07-10 15:00:00
 
-💰 PRICE
-Close:9.06 | Open:8.87
+VAL: 20.82 | POC: 24.14 | VAH: 42.94
+VWAP: 36.19
 
-📉 EMA
-EMA3:8.99 EMA5:8.95 EMA14:8.72 EMA20:8.65
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+score1 (close→poc): 9.58
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 4.17
 
-📈 RSI
-RSI:60.50 | MA:54.73 | Status:1
+TOTAL: 33.75 → FINAL_poc puan: 84.37
 
-💸 MFI
-Bugün:71.16 | Dün:68.92 | 12g Ort:58.45 | Yön:Upward
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
 
-📦 VOLUME
-Bugün:9 064 284 | Dün:5 251 297
-Ort → 5g:8 346 730 | 10g:7 310 557 | 20g:6 103 347
-Durum:negative
-
-📌 PIVOT
-P:7.34 R1:8.03 R2:8.50 R3:8.96
-S1:7.11 S2:6.64 S3:6.18
-
-🧠 SCORE
-POC:58.03 VWAP:0.00 EMA:0.00
-RSI:70.00 MFI:70.00 VOL:100.00
-
-------------------------------------------------------------
-
-===================== HATSN =====================
-
-📅 Gün: 25-04-2026
-
-🏆 TRADEOPS_RANK: 13 | TRIAGE_SCORE: 55.81
-
-📊 Cluster Sayısı: 3
-AVG_POC: 41,18 | STOP_LOSS: 43,94 | TARGET: 45,09
-
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-05 08:00:00 | POC:41.18 | VAL:37.02 | VAH:42.80 | VWAP:41.56
-1year | 2025-08-25 09:00:00 | POC:41.20 | VAL:38.70 | VAH:48.00 | VWAP:44.43
-2year | 2024-05-07 09:00:00 | POC:40.64 | VAL:37.00 | VAH:49.00 | VWAP:46.78
-
-💰 PRICE
-Close:45.30 | Open:43.46
 
 📉 EMA
-EMA3:44.28 EMA5:43.54 EMA14:41.50 EMA20:40.76
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 26.03 | EMA5: 26.02 | EMA14: 25.33 | EMA20: 24.96
+EMA 5-20 Status: 1 | Cross: 0 | Days: 15
+EMA 3-20 Status: 1 | Cross: 0 | Days: 16
+EMA 3-14 Status: 1 | Cross: 0 | Days: 16
 
 📈 RSI
-RSI:71.88 | MA:64.67 | Status:1
+RSI_PUAN: 71.0
+RSI: 70.25 | RSI_MA: 60.78
+Status: 1 | Cross: 0 | Days Ago: 14
 
 💸 MFI
-Bugün:80.78 | Dün:90.25 | 12g Ort:75.64 | Yön:Downward
+MFI_PUAN: 70.0
+MFI: 75.26 | Yesterday: 74.50 | Avg12: 71.57
+Direction: Upward
 
 📦 VOLUME
-Bugün:5 048 123 | Dün:10 911 717
-Ort → 5g:5 716 542 | 10g:4 088 012 | 20g:3 132 751
-Durum:negative
-
-📌 PIVOT
-P:43.40 R1:40.71 R2:42.77 R3:44.84
-S1:36.57 S2:34.51 S3:32.44
-
-🧠 SCORE
-POC:52.91 VWAP:79.98 EMA:0.00
-RSI:70.00 MFI:65.00 VOL:50.00
+VOL_PUAN: 0.0
+Last: 1857125 | Avg5: 2978152.8 | Avg10: 4130354 | Avg20: 4015022.15
+Status: negative
 
 ------------------------------------------------------------
 
@@ -574,42 +1004,143 @@ RSI:70.00 MFI:65.00 VOL:50.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 14 | TRIAGE_SCORE: 55.47
+🏆 TRADEOPS_RANK: 12 | TRIAGE_SCORE: 56.38
 
-📊 Cluster Sayısı: 2
-AVG_POC: 7,42 | STOP_LOSS: 7,64 | TARGET: 9,43
+📊 Cluster: 2
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-01-26 08:00:00 | POC:7.42 | VAL:6.96 | VAH:9.75 | VWAP:9.21
-6months | 2026-01-20 14:00:00 | POC:7.42 | VAL:6.96 | VAH:10.05 | VWAP:9.50
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:7.88 | Open:7.35
+PERIOD: 3months
+HIGHEST_DATE: 2026-01-26 08:00:00
+
+VAL: 6.96 | POC: 7.42 | VAH: 9.75
+VWAP: 9.21
+
+score1 (close→poc): 8.47
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 3.92
+
+TOTAL: 22.39 → FINAL_poc puan: 55.97
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2026-01-20 14:00:00
+
+VAL: 6.96 | POC: 7.42 | VAH: 10.05
+VWAP: 9.50
+
+score1 (close→poc): 8.68
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 4.19
+
+TOTAL: 22.87 → FINAL_poc puan: 57.17
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:7.63 EMA5:7.55 EMA14:7.68 EMA20:7.83
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 7.63 | EMA5: 7.55 | EMA14: 7.68 | EMA20: 7.83
+EMA 5-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-14 Status: 0 | Cross: 0 | Days: 0
 
 📈 RSI
-RSI:47.22 | MA:37.58 | Status:1
+RSI_PUAN: 83.0
+RSI: 47.22 | RSI_MA: 37.58
+Status: 1 | Cross: 0 | Days Ago: 2
 
 💸 MFI
-Bugün:45.24 | Dün:33.14 | 12g Ort:52.00 | Yön:Upward
+MFI_PUAN: 35.0
+MFI: 45.24 | Yesterday: 33.14 | Avg12: 52.00
+Direction: Upward
 
 📦 VOLUME
-Bugün:42 033 785 | Dün:23 167 083
-Ort → 5g:30 816 080 | 10g:24 671 220 | 20g:18 279 430
-Durum:negative
+VOL_PUAN: 100.0
+Last: 42033785 | Avg5: 30816080 | Avg10: 24671220.8 | Avg20: 18279430.4
+Status: negative
 
-📌 PIVOT
-P:nan R1:nan R2:nan R3:nan
-S1:nan S2:nan S3:nan
+------------------------------------------------------------
 
-🧠 SCORE
-POC:55.97 VWAP:100.00 EMA:0.00
-RSI:70.00 MFI:35.00 VOL:100.00
+===================== YUNSA =====================
+
+📅 Gün: 25-04-2026
+
+🏆 TRADEOPS_RANK: 13 | TRIAGE_SCORE: 56.38
+
+📊 Cluster: 2
+
+🧠 POC SCORE DETAIL
+
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-17 15:00:00
+
+VAL: 8.02 | POC: 8.85 | VAH: 9.16
+VWAP: 8.96
+
+score1 (close→poc): 8.21
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 23.21 → FINAL_poc puan: 58.03
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+PERIOD: 2year
+HIGHEST_DATE: 2024-05-10 13:00:00
+
+VAL: 6.65 | POC: 8.87 | VAH: 10.52
+VWAP: 8.24
+
+score1 (close→poc): 10.00
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 0.00
+
+TOTAL: 20.00 → FINAL_poc puan: 50.00
+
+📊 VWAP
+VWAP_PUAN:99.03"
+-------------------------------------------
+
+
+📉 EMA
+EMA_PUAN: 0.00
+EMA3: 8.99 | EMA5: 8.95 | EMA14: 8.72 | EMA20: 8.65
+EMA 5-20 Status: 1 | Cross: 0 | Days: 9
+EMA 3-20 Status: 1 | Cross: 0 | Days: 10
+EMA 3-14 Status: 1 | Cross: 0 | Days: 11
+
+📈 RSI
+RSI_PUAN: 70.0
+RSI: 60.50 | RSI_MA: 54.73
+Status: 1 | Cross: 0 | Days Ago: 17
+
+💸 MFI
+MFI_PUAN: 70.0
+MFI: 71.16 | Yesterday: 68.92 | Avg12: 58.45
+Direction: Upward
+
+📦 VOLUME
+VOL_PUAN: 100.0
+Last: 9064284 | Avg5: 8346730 | Avg10: 7310557.8 | Avg20: 6103347.3
+Status: negative
 
 ------------------------------------------------------------
 
@@ -617,43 +1148,181 @@ RSI:70.00 MFI:35.00 VOL:100.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 15 | TRIAGE_SCORE: 55.15
+🏆 TRADEOPS_RANK: 14 | TRIAGE_SCORE: 55.99
 
-📊 Cluster Sayısı: 3
-AVG_POC: 9,03 | STOP_LOSS: 8,77 | TARGET: 9,21
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-23 10:00:00 | POC:9.03 | VAL:8.76 | VAH:9.10 | VWAP:8.99
-1year | 2025-08-25 13:00:00 | POC:9.03 | VAL:8.31 | VAH:9.45 | VWAP:8.75
-2year | 2024-04-25 09:00:00 | POC:8.96 | VAL:7.25 | VAH:9.37 | VWAP:9.18
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:9.04 | Open:8.92
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-23 10:00:00
+
+VAL: 8.76 | POC: 9.03 | VAH: 9.10
+VWAP: 8.99
+
+score1 (close→poc): 10.00
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 0.00
+
+TOTAL: 25.00 → FINAL_poc puan: 62.50
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-08-25 13:00:00
+
+VAL: 8.31 | POC: 9.03 | VAH: 9.45
+VWAP: 8.75
+
+score1 (close→poc): 10.00
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 0.00
+
+TOTAL: 25.00 → FINAL_poc puan: 62.50
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+PERIOD: 2year
+HIGHEST_DATE: 2024-04-25 09:00:00
+
+VAL: 7.25 | POC: 8.96 | VAH: 9.37
+VWAP: 9.18
+
+score1 (close→poc): 10.00
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 0.00
+
+TOTAL: 25.00 → FINAL_poc puan: 62.50
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:8.94 EMA5:8.89 EMA14:8.84 EMA20:8.85
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 33.33
+EMA3: 8.94 | EMA5: 8.89 | EMA14: 8.84 | EMA20: 8.85
+EMA 5-20 Status: 1 | Cross: 1 | Days: 0
+EMA 3-20 Status: 1 | Cross: 0 | Days: 1
+EMA 3-14 Status: 1 | Cross: 0 | Days: 1
 
 📈 RSI
-RSI:56.39 | MA:46.95 | Status:1
+RSI_PUAN: 82.0
+RSI: 56.39 | RSI_MA: 46.95
+Status: 1 | Cross: 0 | Days Ago: 3
 
 💸 MFI
-Bugün:39.72 | Dün:42.44 | 12g Ort:39.54 | Yön:Downward
+MFI_PUAN: 35.0
+MFI: 39.72 | Yesterday: 42.44 | Avg12: 39.54
+Direction: Downward
 
 📦 VOLUME
-Bugün:858 243 | Dün:823 097
-Ort → 5g:773 333 | 10g:889 296 | 20g:931 394
-Durum:negative
+VOL_PUAN: 50.0
+Last: 858243 | Avg5: 773333.6 | Avg10: 889296.4 | Avg20: 931394.4
+Status: negative
 
-📌 PIVOT
-P:7.04 R1:8.12 R2:8.94 R3:9.76
-S1:6.48 S2:5.66 S3:4.84
+------------------------------------------------------------
 
-🧠 SCORE
-POC:62.50 VWAP:0.00 EMA:33.33
-RSI:70.00 MFI:35.00 VOL:50.00
+===================== HATSN =====================
+
+📅 Gün: 25-04-2026
+
+🏆 TRADEOPS_RANK: 15 | TRIAGE_SCORE: 55.81
+
+📊 Cluster: 3
+
+🧠 POC SCORE DETAIL
+
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-05 08:00:00
+
+VAL: 37.02 | POC: 41.18 | VAH: 42.80
+VWAP: 41.56
+
+score1 (close→poc): 1.16
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 21.16 → FINAL_poc puan: 52.91
+
+📊 VWAP
+VWAP_PUAN:79.98"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-08-25 09:00:00
+
+VAL: 38.70 | POC: 41.20 | VAH: 48.00
+VWAP: 44.43
+
+score1 (close→poc): 4.79
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 2.19
+
+TOTAL: 26.97 → FINAL_poc puan: 67.44
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+PERIOD: 2year
+HIGHEST_DATE: 2024-05-07 09:00:00
+
+VAL: 37.00 | POC: 40.64 | VAH: 49.00
+VWAP: 46.78
+
+score1 (close→poc): 5.49
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 1.61
+
+TOTAL: 27.10 → FINAL_poc puan: 67.75
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+📉 EMA
+EMA_PUAN: 0.00
+EMA3: 44.28 | EMA5: 43.54 | EMA14: 41.50 | EMA20: 40.76
+EMA 5-20 Status: 1 | Cross: 0 | Days: 13
+EMA 3-20 Status: 1 | Cross: 0 | Days: 15
+EMA 3-14 Status: 1 | Cross: 0 | Days: 16
+
+📈 RSI
+RSI_PUAN: 70.0
+RSI: 71.88 | RSI_MA: 64.67
+Status: 1 | Cross: 0 | Days Ago: 19
+
+💸 MFI
+MFI_PUAN: 65.0
+MFI: 80.78 | Yesterday: 90.25 | Avg12: 75.64
+Direction: Downward
+
+📦 VOLUME
+VOL_PUAN: 50.0
+Last: 5048123 | Avg5: 5716542 | Avg10: 4088012.2 | Avg20: 3132751.9
+Status: negative
 
 ------------------------------------------------------------
 
@@ -661,128 +1330,90 @@ RSI:70.00 MFI:35.00 VOL:50.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 16 | TRIAGE_SCORE: 54.34
+🏆 TRADEOPS_RANK: 16 | TRIAGE_SCORE: 54.62
 
-📊 Cluster Sayısı: 3
-AVG_POC: 10,73 | STOP_LOSS: 10,98 | TARGET: 11,58
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-17 08:00:00 | POC:10.72 | VAL:10.67 | VAH:11.33 | VWAP:11.17
-1year | 2025-09-25 09:00:00 | POC:10.74 | VAL:10.65 | VAH:11.58 | VWAP:11.47
-2year | 2024-05-10 08:00:00 | POC:10.74 | VAL:10.29 | VAH:12.76 | VWAP:12.19
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:11.32 | Open:11.24
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-17 08:00:00
 
-📉 EMA
-EMA3:11.29 EMA5:11.24 EMA14:11.06 EMA20:11.01
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+VAL: 10.67 | POC: 10.72 | VAH: 11.33
+VWAP: 11.17
 
-📈 RSI
-RSI:58.96 | MA:51.65 | Status:1
+score1 (close→poc): 0.00
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 5.00
 
-💸 MFI
-Bugün:62.04 | Dün:67.12 | 12g Ort:56.32 | Yön:Downward
+TOTAL: 25.00 → FINAL_poc puan: 62.50
 
-📦 VOLUME
-Bugün:2 070 719 | Dün:1 991 357
-Ort → 5g:3 099 741 | 10g:3 635 924 | 20g:3 195 064
-Durum:negative
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
 
-📌 PIVOT
-P:11.70 R1:11.24 R2:11.63 R3:12.02
-S1:10.46 S2:10.07 S3:9.68
 
-🧠 SCORE
-POC:62.50 VWAP:0.00 EMA:0.00
-RSI:70.00 MFI:35.00 VOL:25.00
+PERIOD: 1year
+HIGHEST_DATE: 2025-09-25 09:00:00
 
-------------------------------------------------------------
+VAL: 10.65 | POC: 10.74 | VAH: 11.58
+VWAP: 11.47
 
-===================== GRNYO =====================
+score1 (close→poc): 2.35
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 5.00
 
-📅 Gün: 25-04-2026
+TOTAL: 27.35 → FINAL_poc puan: 68.38
 
-🏆 TRADEOPS_RANK: 17 | TRIAGE_SCORE: 53.84
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
 
-📊 Cluster Sayısı: 2
-AVG_POC: 17,30 | STOP_LOSS: 17,86 | TARGET: 19,26
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-01-28 15:00:00 | POC:17.30 | VAL:15.61 | VAH:18.95 | VWAP:17.04
-6months | 2026-01-22 08:00:00 | POC:17.30 | VAL:15.59 | VAH:19.36 | VWAP:17.51
+PERIOD: 2year
+HIGHEST_DATE: 2024-05-10 08:00:00
 
-💰 PRICE
-Close:18.41 | Open:18.00
+VAL: 10.29 | POC: 10.74 | VAH: 12.76
+VWAP: 12.19
 
-📉 EMA
-EMA3:18.16 EMA5:17.74 EMA14:16.45 EMA20:16.13
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+score1 (close→poc): 7.54
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 3.63
 
-📈 RSI
-RSI:68.43 | MA:49.55 | Status:1
+TOTAL: 31.17 → FINAL_poc puan: 77.91
 
-💸 MFI
-Bugün:83.21 | Dün:79.95 | 12g Ort:61.39 | Yön:Upward
+📊 VWAP
+VWAP_PUAN:42.74"
+-------------------------------------------
 
-📦 VOLUME
-Bugün:810 176 | Dün:764 400
-Ort → 5g:1 409 213 | 10g:967 400 | 20g:665 676
-Durum:negative
-
-📌 PIVOT
-P:nan R1:nan R2:nan R3:nan
-S1:nan S2:nan S3:nan
-
-🧠 SCORE
-POC:53.09 VWAP:60.80 EMA:0.00
-RSI:70.00 MFI:100.00 VOL:50.00
-
-------------------------------------------------------------
-
-===================== NTGAZ =====================
-
-📅 Gün: 25-04-2026
-
-🏆 TRADEOPS_RANK: 18 | TRIAGE_SCORE: 53.84
-
-📊 Cluster Sayısı: 1
-AVG_POC: 12,21 | STOP_LOSS: 12,16 | TARGET: 12,85
-
-📍 POC + VWAP CLUSTERS:
-1year | 2026-03-04 10:00:00 | POC:12.21 | VAL:11.63 | VAH:12.85 | VWAP:12.54
-
-💰 PRICE
-Close:12.54 | Open:12.22
 
 📉 EMA
-EMA3:12.38 EMA5:12.36 EMA14:12.32 EMA20:12.31
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 11.29 | EMA5: 11.24 | EMA14: 11.06 | EMA20: 11.01
+EMA 5-20 Status: 1 | Cross: 0 | Days: 7
+EMA 3-20 Status: 1 | Cross: 0 | Days: 7
+EMA 3-14 Status: 1 | Cross: 0 | Days: 9
 
 📈 RSI
-RSI:41.37 | MA:40.06 | Status:1
+RSI_PUAN: 74.0
+RSI: 58.96 | RSI_MA: 51.65
+Status: 1 | Cross: 0 | Days Ago: 11
 
 💸 MFI
-Bugün:49.21 | Dün:47.89 | 12g Ort:58.10 | Yön:Upward
+MFI_PUAN: 35.0
+MFI: 62.04 | Yesterday: 67.12 | Avg12: 56.32
+Direction: Downward
 
 📦 VOLUME
-Bugün:9 289 315 | Dün:6 592 938
-Ort → 5g:7 873 834 | 10g:7 572 499 | 20g:7 491 385
-Durum:negative
-
-📌 PIVOT
-P:nan R1:nan R2:nan R3:nan
-S1:nan S2:nan S3:nan
-
-🧠 SCORE
-POC:42.65 VWAP:0.00 EMA:100.00
-RSI:70.00 MFI:35.00 VOL:100.00
+VOL_PUAN: 25.0
+Last: 2070719 | Avg5: 3099741.2 | Avg10: 3635924 | Avg20: 3195064.6
+Status: negative
 
 ------------------------------------------------------------
 
@@ -790,42 +1421,71 @@ RSI:70.00 MFI:35.00 VOL:100.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 19 | TRIAGE_SCORE: 53.67
+🏆 TRADEOPS_RANK: 17 | TRIAGE_SCORE: 54.23
 
-📊 Cluster Sayısı: 2
-AVG_POC: 49,42 | STOP_LOSS: 56,94 | TARGET: 56,86
+📊 Cluster: 2
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-05 12:00:00 | POC:49.42 | VAL:37.50 | VAH:54.38 | VWAP:50.16
-6months | 2026-01-12 15:00:00 | POC:49.42 | VAL:37.74 | VAH:57.68 | VWAP:53.41
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:58.70 | Open:55.80
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-05 12:00:00
+
+VAL: 37.50 | POC: 49.42 | VAH: 54.38
+VWAP: 50.16
+
+score1 (close→poc): 3.34
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 18.34 → FINAL_poc puan: 45.84
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2026-01-12 15:00:00
+
+VAL: 37.74 | POC: 49.42 | VAH: 57.68
+VWAP: 53.41
+
+score1 (close→poc): 4.46
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 19.46 → FINAL_poc puan: 48.65
+
+📊 VWAP
+VWAP_PUAN:98.09"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:57.12 EMA5:55.60 EMA14:50.39 EMA20:48.98
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 0.00
+EMA3: 57.12 | EMA5: 55.60 | EMA14: 50.39 | EMA20: 48.98
+EMA 5-20 Status: 1 | Cross: 0 | Days: 6
+EMA 3-20 Status: 1 | Cross: 0 | Days: 6
+EMA 3-14 Status: 1 | Cross: 0 | Days: 7
 
 📈 RSI
-RSI:67.30 | MA:52.24 | Status:1
+RSI_PUAN: 78.0
+RSI: 67.30 | RSI_MA: 52.24
+Status: 1 | Cross: 0 | Days Ago: 7
 
 💸 MFI
-Bugün:84.53 | Dün:79.79 | 12g Ort:51.66 | Yön:Upward
+MFI_PUAN: 100.0
+MFI: 84.53 | Yesterday: 79.79 | Avg12: 51.66
+Direction: Upward
 
 📦 VOLUME
-Bugün:15 241 477 | Dün:10 484 027
-Ort → 5g:17 024 812 | 10g:13 828 142 | 20g:9 800 967
-Durum:negative
-
-📌 PIVOT
-P:nan R1:nan R2:nan R3:nan
-S1:nan S2:nan S3:nan
-
-🧠 SCORE
-POC:45.84 VWAP:100.00 EMA:0.00
-RSI:70.00 MFI:100.00 VOL:75.00
+VOL_PUAN: 75.0
+Last: 15241477 | Avg5: 17024812.2 | Avg10: 13828142 | Avg20: 9800967.5
+Status: negative
 
 ------------------------------------------------------------
 
@@ -833,42 +1493,214 @@ RSI:70.00 MFI:100.00 VOL:75.00
 
 📅 Gün: 25-04-2026
 
-🏆 TRADEOPS_RANK: 20 | TRIAGE_SCORE: 53.54
+🏆 TRADEOPS_RANK: 18 | TRIAGE_SCORE: 54.17
 
-📊 Cluster Sayısı: 3
-AVG_POC: 4,49 | STOP_LOSS: 4,38 | TARGET: 5,40
+📊 Cluster: 3
 
-📍 POC + VWAP CLUSTERS:
-3months | 2026-02-12 11:00:00 | POC:4.49 | VAL:4.32 | VAH:4.84 | VWAP:4.80
-6months | 2025-10-28 07:30:00 | POC:4.49 | VAL:4.33 | VAH:5.52 | VWAP:5.32
-1year | 2025-09-09 09:00:00 | POC:4.49 | VAL:4.33 | VAH:5.99 | VWAP:5.73
+🧠 POC SCORE DETAIL
 
-💰 PRICE
-Close:4.52 | Open:4.45
+PERIOD: 3months
+HIGHEST_DATE: 2026-02-12 11:00:00
+
+VAL: 4.32 | POC: 4.49 | VAH: 4.84
+VWAP: 4.80
+
+score1 (close→poc): 9.90
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 1.22
+
+TOTAL: 26.12 → FINAL_poc puan: 65.29
+
+📊 VWAP
+VWAP_PUAN:16.67"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2025-10-28 07:30:00
+
+VAL: 4.33 | POC: 4.49 | VAH: 5.52
+VWAP: 5.32
+
+score1 (close→poc): 10.00
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 4.43
+
+TOTAL: 29.43 → FINAL_poc puan: 73.56
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
+
+PERIOD: 1year
+HIGHEST_DATE: 2025-09-09 09:00:00
+
+VAL: 4.33 | POC: 4.49 | VAH: 5.99
+VWAP: 5.73
+
+score1 (close→poc): 10.00
+score2 (cluster): 10.00
+score3 (green): 5.00
+score4 (contactless): 0.00
+score5 (poc→val): 5.00
+
+TOTAL: 30.00 → FINAL_poc puan: 75.00
+
+📊 VWAP
+VWAP_PUAN:100.00"
+-------------------------------------------
+
 
 📉 EMA
-EMA3:4.49 EMA5:4.48 EMA14:4.47 EMA20:4.49
-5-20: kesişim yok
-3-20: kesişim yok
-3-14: kesişim yok
+EMA_PUAN: 33.33
+EMA3: 4.49 | EMA5: 4.48 | EMA14: 4.47 | EMA20: 4.49
+EMA 5-20 Status: 0 | Cross: 0 | Days: 0
+EMA 3-20 Status: 1 | Cross: 1 | Days: 0
+EMA 3-14 Status: 1 | Cross: 0 | Days: 4
 
 📈 RSI
-RSI:49.99 | MA:44.65 | Status:1
+RSI_PUAN: 79.0
+RSI: 49.99 | RSI_MA: 44.65
+Status: 1 | Cross: 0 | Days Ago: 6
 
 💸 MFI
-Bugün:53.95 | Dün:54.43 | 12g Ort:62.66 | Yön:Downward
+MFI_PUAN: 0.0
+MFI: 53.95 | Yesterday: 54.43 | Avg12: 62.66
+Direction: Downward
 
 📦 VOLUME
-Bugün:1 216 376 | Dün:1 502 881
-Ort → 5g:1 701 335 | 10g:1 770 745 | 20g:2 020 259
-Durum:negative
+VOL_PUAN: 0.0
+Last: 1216376 | Avg5: 1701335.4 | Avg10: 1770745.8 | Avg20: 2020259.5
+Status: negative
 
-📌 PIVOT
-P:5.83 R1:5.35 R2:5.66 R3:5.98
-S1:4.71 S2:4.40 S3:4.08
+------------------------------------------------------------
 
-🧠 SCORE
-POC:65.29 VWAP:16.67 EMA:33.33
-RSI:70.00 MFI:0.00 VOL:0.00
+===================== GRNYO =====================
+
+📅 Gün: 25-04-2026
+
+🏆 TRADEOPS_RANK: 19 | TRIAGE_SCORE: 54.12
+
+📊 Cluster: 2
+
+🧠 POC SCORE DETAIL
+
+PERIOD: 3months
+HIGHEST_DATE: 2026-01-28 15:00:00
+
+VAL: 15.61 | POC: 17.30 | VAH: 18.95
+VWAP: 17.04
+
+score1 (close→poc): 6.24
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 21.24 → FINAL_poc puan: 53.09
+
+📊 VWAP
+VWAP_PUAN:60.80"
+-------------------------------------------
+
+
+PERIOD: 6months
+HIGHEST_DATE: 2026-01-22 08:00:00
+
+VAL: 15.59 | POC: 17.30 | VAH: 19.36
+VWAP: 17.51
+
+score1 (close→poc): 6.74
+score2 (cluster): 5.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 21.74 → FINAL_poc puan: 54.35
+
+📊 VWAP
+VWAP_PUAN:2.80"
+-------------------------------------------
+
+
+📉 EMA
+EMA_PUAN: 0.00
+EMA3: 18.16 | EMA5: 17.74 | EMA14: 16.45 | EMA20: 16.13
+EMA 5-20 Status: 1 | Cross: 0 | Days: 4
+EMA 3-20 Status: 1 | Cross: 0 | Days: 5
+EMA 3-14 Status: 1 | Cross: 0 | Days: 5
+
+📈 RSI
+RSI_PUAN: 74.0
+RSI: 68.43 | RSI_MA: 49.55
+Status: 1 | Cross: 0 | Days Ago: 11
+
+💸 MFI
+MFI_PUAN: 100.0
+MFI: 83.21 | Yesterday: 79.95 | Avg12: 61.39
+Direction: Upward
+
+📦 VOLUME
+VOL_PUAN: 50.0
+Last: 810176 | Avg5: 1409213.6 | Avg10: 967400.4 | Avg20: 665676.75
+Status: negative
+
+------------------------------------------------------------
+
+===================== NTGAZ =====================
+
+📅 Gün: 25-04-2026
+
+🏆 TRADEOPS_RANK: 20 | TRIAGE_SCORE: 53.84
+
+📊 Cluster: 1
+
+🧠 POC SCORE DETAIL
+
+PERIOD: 1year
+HIGHEST_DATE: 2026-03-04 10:00:00
+
+VAL: 11.63 | POC: 12.21 | VAH: 12.85
+VWAP: 12.54
+
+score1 (close→poc): 7.06
+score2 (cluster): 0.00
+score3 (green): 5.00
+score4 (contactless): 5.00
+score5 (poc→val): 0.00
+
+TOTAL: 17.06 → FINAL_poc puan: 42.65
+
+📊 VWAP
+VWAP_PUAN:0.00"
+-------------------------------------------
+
+
+📉 EMA
+EMA_PUAN: 100.00
+EMA3: 12.38 | EMA5: 12.36 | EMA14: 12.32 | EMA20: 12.31
+EMA 5-20 Status: 1 | Cross: 1 | Days: 0
+EMA 3-20 Status: 1 | Cross: 1 | Days: 0
+EMA 3-14 Status: 1 | Cross: 1 | Days: 0
+
+📈 RSI
+RSI_PUAN: 70.0
+RSI: 41.37 | RSI_MA: 40.06
+Status: 1 | Cross: 0 | Days Ago: 20
+
+💸 MFI
+MFI_PUAN: 35.0
+MFI: 49.21 | Yesterday: 47.89 | Avg12: 58.10
+Direction: Upward
+
+📦 VOLUME
+VOL_PUAN: 100.0
+Last: 9289315 | Avg5: 7873834.4 | Avg10: 7572499.4 | Avg20: 7491385.7
+Status: negative
 
 ------------------------------------------------------------
