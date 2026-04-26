@@ -133,3 +133,30 @@ def telegram_send_message(title: str, text: str, channel: str = "main") -> None:
             print(f"✅ TELEGRAM MESSAGE SENT (no logo)! channel={channel}")
         else:
             print(f"❌ TELEGRAM ERROR ({channel}): {response.text}")
+
+
+def telegram_send_document(file_path: str, title: str = "", channel: str = "main") -> None:
+
+    
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN is not set in environment variables.")
+
+    chat_id = _get_chat_id(channel)
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+
+    caption = title if title else ""
+
+    with open(file_path, "rb") as f:
+        files = {"document": f}
+        data = {
+            "chat_id": chat_id,
+            "caption": caption
+        }
+
+        response = requests.post(url, data=data, files=files)
+
+    if response.status_code == 200:
+        print(f"✅ TELEGRAM DOCUMENT SENT! channel={channel}")
+    else:
+        print(f"❌ TELEGRAM ERROR ({channel}): {response.text}")
