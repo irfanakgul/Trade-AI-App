@@ -3285,27 +3285,28 @@ class PostgresRepository:
         close_minute: int,
     ) -> List[Dict[str, Any]]:
         q = text(f"""
-            WITH last_day AS (
-                SELECT MAX(("TIMESTAMP")::date) AS dt
+            WITH symbol_last_day AS (
+                SELECT
+                    "EXCHANGE",
+                    "SYMBOL",
+                    MAX(("TIMESTAMP")::date) AS dt
                 FROM {input_schema}."{input_table}"
                 WHERE "EXCHANGE" = :exchange
+                GROUP BY "EXCHANGE", "SYMBOL"
             ),
             day_data AS (
-                SELECT *
-                FROM {input_schema}."{input_table}", last_day
-                WHERE "EXCHANGE" = :exchange
-                AND ("TIMESTAMP")::date = last_day.dt
-            ),
-            symbols AS (
-                SELECT DISTINCT
-                    d."EXCHANGE",
-                    d."SYMBOL"
-                FROM day_data d
+                SELECT d.*
+                FROM {input_schema}."{input_table}" d
+                JOIN symbol_last_day ld
+                ON d."EXCHANGE" = ld."EXCHANGE"
+                AND d."SYMBOL" = ld."SYMBOL"
+                AND d."TIMESTAMP"::date = ld.dt
+                WHERE d."EXCHANGE" = :exchange
             ),
             merged AS (
                 SELECT
-                    s."EXCHANGE" AS exchange,
-                    s."SYMBOL" AS symbol,
+                    ld."EXCHANGE" AS exchange,
+                    ld."SYMBOL" AS symbol,
                     ld.dt AS dt,
 
                     o.open_timestamp,
@@ -3316,30 +3317,31 @@ class PostgresRepository:
 
                     v.daily_volume
 
-                FROM symbols s
-                JOIN last_day ld ON TRUE
+                FROM symbol_last_day ld
 
-                -- OPEN: exact varsa kendisi, yoksa requested time'dan sonraki ilk row
+                -- OPEN: requested time veya son gün içinde ondan sonraki ilk row
                 LEFT JOIN LATERAL (
                     SELECT
                         d."TIMESTAMP" AS open_timestamp,
                         d."OPEN"::double precision AS open_price
                     FROM day_data d
-                    WHERE d."EXCHANGE" = s."EXCHANGE"
-                    AND d."SYMBOL" = s."SYMBOL"
+                    WHERE d."EXCHANGE" = ld."EXCHANGE"
+                    AND d."SYMBOL" = ld."SYMBOL"
+                    AND d."TIMESTAMP"::date = ld.dt
                     AND d."TIMESTAMP"::time >= make_time(:open_hour, :open_minute, 0)
                     ORDER BY d."TIMESTAMP" ASC
                     LIMIT 1
                 ) o ON TRUE
 
-                -- CLOSE: exact varsa kendisi, yoksa requested time'dan önceki son row
+                -- CLOSE: requested time veya son gün içinde ondan önceki son row
                 LEFT JOIN LATERAL (
                     SELECT
                         d."TIMESTAMP" AS close_timestamp,
                         d."CLOSE"::double precision AS close_price
                     FROM day_data d
-                    WHERE d."EXCHANGE" = s."EXCHANGE"
-                    AND d."SYMBOL" = s."SYMBOL"
+                    WHERE d."EXCHANGE" = ld."EXCHANGE"
+                    AND d."SYMBOL" = ld."SYMBOL"
+                    AND d."TIMESTAMP"::date = ld.dt
                     AND d."TIMESTAMP"::time <= make_time(:close_hour, :close_minute, 0)
                     ORDER BY d."TIMESTAMP" DESC
                     LIMIT 1
@@ -3349,8 +3351,9 @@ class PostgresRepository:
                     SELECT
                         COALESCE(SUM(d."VOLUME"::double precision), 0) AS daily_volume
                     FROM day_data d
-                    WHERE d."EXCHANGE" = s."EXCHANGE"
-                    AND d."SYMBOL" = s."SYMBOL"
+                    WHERE d."EXCHANGE" = ld."EXCHANGE"
+                    AND d."SYMBOL" = ld."SYMBOL"
+                    AND d."TIMESTAMP"::date = ld.dt
                     AND d."TIMESTAMP"::time >= make_time(:open_hour, :open_minute, 0)
                     AND d."TIMESTAMP"::time <= make_time(:close_hour, :close_minute, 0)
                 ) v ON TRUE
@@ -3393,29 +3396,26 @@ class PostgresRepository:
             ).fetchall()
 
         return [
-        {
-            "EXCHANGE": r[0],
-            "SYMBOL": r[1],
-            "DATE": r[2],
-            "OPEN_TIMESTAMP": r[3],
-            "CLOSE_TIMESTAMP": r[4],
-            "REQUESTED_OPEN_TIME": r[5],
-            "REQUESTED_CLOSE_TIME": r[6],
-            "OPEN": float(r[7]) if r[7] is not None else None,
-            "CLOSE": float(r[8]) if r[8] is not None else None,
-            "DIFF_O_C": float(r[9]) if r[9] is not None else None,
-            "DAILY_VOLUME": float(r[10]) if r[10] is not None else None,
-            "STATUS": r[11],
-
-            # 🔴 YENİLER → ŞU AN NULL
-            "REALISED_CLOSE_TIMESTAMP": None,
-            "REALISED_CLOSE_PRICE": None,
-            "REALISED_PROFIT": None,
-
-            "CREATED_AT": r[12],
-        }
-        for r in rows
-    ]
+            {
+                "EXCHANGE": r[0],
+                "SYMBOL": r[1],
+                "DATE": r[2],
+                "OPEN_TIMESTAMP": r[3],
+                "CLOSE_TIMESTAMP": r[4],
+                "REQUESTED_OPEN_TIME": r[5],
+                "REQUESTED_CLOSE_TIME": r[6],
+                "OPEN": float(r[7]) if r[7] is not None else None,
+                "CLOSE": float(r[8]) if r[8] is not None else None,
+                "DIFF_O_C": float(r[9]) if r[9] is not None else None,
+                "DAILY_VOLUME": float(r[10]) if r[10] is not None else None,
+                "STATUS": r[11],
+                "REALISED_CLOSE_TIMESTAMP": None,
+                "REALISED_CLOSE_PRICE": None,
+                "REALISED_PROFIT": None,
+                "CREATED_AT": r[12],
+            }
+            for r in rows
+        ]
     
     def insert_watch_signal_check_rows(
         self,
@@ -3837,4 +3837,83 @@ class PostgresRepository:
 
         return {
             "master_inserted_rows": int(master_count),
+        }
+    
+    # =====================================
+    # LIVE buy signal table for all exc
+    # =====================================
+
+    def append_daily_buy_signals(
+        self,
+        exchange: str,
+        source_schema: str,
+        source_table: str,
+        triage_schema: str,
+        triage_table: str,
+        target_schema: str,
+        target_table: str,
+    ) -> Dict[str, int]:
+        """
+        Append BUY signals into live table.
+
+        A = source watch signal table
+        B = evaluation master score table
+
+        Join:
+        A.EXCHANGE = B.EXCHANGE
+        A.SYMBOL   = B.SYMBOL
+        """
+
+        exchange = exchange.upper().strip()
+
+        insert_sql = f"""
+            INSERT INTO {target_schema}."{target_table}" (
+                "EXCHANGE",
+                "SYMBOL",
+                "DATE",
+                "TRIAGE_SCORE",
+                "RANK",
+                "APRX_ENTRY_PRICE",
+                "TARGET_PRICE",
+                "SIGNAL",
+                "PRICE_ON_BUY",
+                "STATUS",
+                "CREATED_AT"
+            )
+            SELECT
+                a."EXCHANGE" AS "EXCHANGE",
+                a."SYMBOL" AS "SYMBOL",
+                b."TRIAGE_ENTRY_DAY" AS "DATE",
+                b."MASTER_SCORE" AS "TRIAGE_SCORE",
+                b."RANK" AS "RANK",
+                a."CLOSE" AS "APRX_ENTRY_PRICE",
+                b."TARGET_PRICE" AS "TARGET_PRICE",
+                a."STATUS" AS "SIGNAL",
+                NULL AS "PRICE_ON_BUY",
+                NULL AS "STATUS",
+                TO_CHAR(
+                    CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam',
+                    'DD-MM-YYYY HH24:MI'
+                ) AS "CREATED_AT"
+            FROM {source_schema}."{source_table}" a
+            INNER JOIN {triage_schema}."{triage_table}" b
+                ON a."EXCHANGE" = b."EXCHANGE"
+            AND a."SYMBOL" = b."SYMBOL"
+            WHERE a."EXCHANGE" = :exchange
+            AND a."STATUS" = 'BUY'
+        """
+
+        count_sql = text(f"""
+            SELECT COUNT(*)
+            FROM {target_schema}."{target_table}"
+            WHERE "EXCHANGE" = :exchange
+        """)
+
+        with self.engine.begin() as conn:
+            res = conn.execute(text(insert_sql), {"exchange": exchange})
+            total_rows = conn.execute(count_sql, {"exchange": exchange}).scalar() or 0
+
+        return {
+            "inserted_rows": int(res.rowcount or 0),
+            "total_rows_for_exchange": int(total_rows),
         }

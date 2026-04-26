@@ -34,7 +34,7 @@ class WatchDatasetBuildConfig:
     max_retries: int = 3
     retry_wait_seconds: int = 2
 
-    tv_n_bars: int = 120
+    tv_n_bars: int = 500
 
     # bugunluk minute data istiyoruz.
     # provider mevcut implementasyonda start/end aliyor ama get_hist n_bars ile calisiyor.

@@ -23,8 +23,7 @@ async def main():
         run_watch_ingestion=True,
         run_watch_signal_check=True,
         send_telegram_buy_signal = True,
-        run_watch_calc_2=False,
-        run_watch_calc_3=False,
+        run_buy_focus=True,
     )
 
     await run_watch_pipeline(
@@ -35,10 +34,11 @@ async def main():
         signal_open_hour=9,
         signal_open_minute=0,
         signal_close_hour=9,
-        signal_close_minute=45,
+        signal_close_minute=30,
         top_n = 10
     )
 
+# asyncio.run(main())
 
 if __name__ == "__main__":
     try:

@@ -14,7 +14,7 @@ from app.infrastructure.api_clients.market_data_provider import MarketDataProvid
 class TvDatafeedBistConfig:
     username: str
     password: str
-    n_bars: int = 200000
+    n_bars: int = 500
 
 
 class TvDatafeedBistProvider(MarketDataProvider):
@@ -62,9 +62,6 @@ class TvDatafeedBistProvider(MarketDataProvider):
 
         df = df.dropna(subset=["DATETIME"]).sort_values("DATETIME")
 
-        start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-        end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=timezone.utc)
-        df = df[(df["DATETIME"] >= start_dt) & (df["DATETIME"] <= end_dt)]
 
         if df.empty:
             yield []
