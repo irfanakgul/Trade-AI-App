@@ -620,7 +620,7 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             sheet_name= 'ALL_SYMBOLS_STATUS',
             replace_append = 'replace')
         
-        trigger_detailed_log()
+        trigger_detailed_log(log_file="crypto_tech_log.txt")
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:

@@ -680,6 +680,8 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
             table=f"{exc_name}_master_final_combined",
             sheet_name= f'MASTER_IND_{exc_name.upper()}',
             replace_append = 'replace')
+        
+        trigger_detailed_log(log_file="nsye_tech_log.txt")
 
         print(
             f"[MASTER-FINAL] done ({exchange}) "

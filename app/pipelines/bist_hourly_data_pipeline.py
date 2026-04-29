@@ -701,7 +701,7 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             sheet_name= 'ALL_SYMBOLS_STATUS',
             replace_append = 'replace')
         
-        trigger_detailed_log()
+        trigger_detailed_log(log_file="bist_tech_log.txt")
 
         print(
             f"[MASTER-FINAL] done ({exchange}) "
