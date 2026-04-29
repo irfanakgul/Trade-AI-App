@@ -140,7 +140,16 @@ def telegram_send_document(file_path: str, title: str = "", channel: str = "main
     
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN is not set in environment variables.")
+    
+    print(f"[DOC] path={file_path}")
 
+    if not os.path.exists(file_path):
+        print(f"❌ FILE NOT FOUND: {file_path}")
+        return
+
+    if os.path.getsize(file_path) == 0:
+        print(f"❌ FILE EMPTY: {file_path}")
+        return
     chat_id = _get_chat_id(channel)
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"

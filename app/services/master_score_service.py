@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from app.infrastructure.database.repository import PostgresRepository
-from app.services.telegram_bot_chat_service import telegram_send_message, telegram_send_document  # type: ignore
+from app.services.telegram_bot_chat_service import telegram_send_message # type: ignore
 from app.infrastructure.database.db_connector import fn_write_cloud
 
 
@@ -192,7 +192,6 @@ class MasterScoreService:
         days_df = self._add_days_after_poc_column(triage_df, params)
         ranked_df = self._add_rank_column(days_df, params)
         output_df = self._format_output_columns(ranked_df)
-        log_file = self._log_technical_summary(ranked_df)
 
         self.repo.insert_dataframe(
             df=output_df,
@@ -211,11 +210,6 @@ class MasterScoreService:
             telegram_send_message(
                 title=params["telegram_title"],
                 text=telegram_text,
-            )
-
-            telegram_send_document(
-                file_path=log_file,
-                title="📊 TECH LOG"
             )
 
         return output_df
@@ -531,6 +525,12 @@ class MasterScoreService:
         def choose_target(row):
             c = row["FRVP_LATEST_CLOSE_VALUE"]
 
+            vah_6m = df[(df["SYMBOL"] == row["SYMBOL"]) & (df["FRVP_PERIOD_TYPE"] == "6months")]["FRVP_VAH"]
+            vah_6m = vah_6m.iloc[0] if not vah_6m.empty else np.nan
+
+            if pd.notna(vah_6m) and c < vah_6m:
+                return vah_6m
+
             if c < row["FRVP_POC"]:
                 return row["VWAP"]
             elif c < row["VWAP"]:
@@ -698,7 +698,6 @@ class MasterScoreService:
         eligible_df["RANK"] = range(1, len(eligible_df) + 1)
 
         out.loc[eligible_df["index"], "RANK"] = eligible_df["RANK"].values
-
         return out
 
     def _add_days_after_poc_column(self, df: pd.DataFrame, params: Dict) -> pd.DataFrame:
@@ -764,161 +763,6 @@ class MasterScoreService:
 
         return out
     
-    def _log_technical_summary(self, df, log_file="tech_log.txt"):
-
-
-        def f2(x):
-            try: return f"{float(x):.2f}"
-            except: return "-"
-
-        with open(log_file, "w", encoding="utf-8") as f:
-
-            df_base = (
-                df.sort_values(["CREATED_DAY","TRIAGE_SCORE"], ascending=[True, False])
-                .drop_duplicates(subset=["EXCHANGE","SYMBOL","CREATED_DAY"])
-            )
-# master-triage_score sorunsalina bakmak lazim
-            df_sorted = df_base.groupby("CREATED_DAY").head(20)
-
-            for _, base_row in df_sorted.iterrows():
-
-                g = df[
-                    (df["EXCHANGE"]==base_row["EXCHANGE"]) &
-                    (df["SYMBOL"]==base_row["SYMBOL"]) &
-                    (df["CREATED_DAY"]==base_row["CREATED_DAY"])
-                ].copy()
-
-                g = g.sort_values("FRVP_HIGHEST_DATE", ascending=False)
-                r = g.iloc[0]
-
-                symbol = r["SYMBOL"]
-                day = r["CREATED_DAY"]
-
-                # =========================
-                # CLUSTER
-                # =========================
-                g_unique = g.drop_duplicates(subset=["FRVP_HIGHEST_DATE"])
-                cluster_count = len(g_unique)
-
-                poc_lines = []
-                poc_score_lines = []
-
-                # cluster bonus (tek)
-                def calc_cluster_bonus(g):
-                    g_unique = g.drop_duplicates(subset=["FRVP_HIGHEST_DATE"])
-                    count = len(g_unique)
-                    if count < 2: return 0
-                    pocs = g_unique["FRVP_POC"].dropna().astype(float).values
-                    if len(pocs) < 2: return 0
-                    spread = (pocs.max() - pocs.min()) / pocs.min()
-                    if spread <= 0.02:
-                        if count >= 4: return 15
-                        elif count == 3: return 10
-                        elif count == 2: return 5
-                    return 0
-
-                s2 = calc_cluster_bonus(g)
-
-                for _, row in g_unique.iterrows():
-
-                    close = float(row["FRVP_LATEST_CLOSE_VALUE"])
-                    poc = float(row["FRVP_POC"])
-                    val = float(row["FRVP_VAL"])
-                    vah = float(row["FRVP_VAH"])
-
-                    value_range = vah - val
-
-                    # score1
-                    dist_close_poc = abs(close - poc)
-                    if dist_close_poc <= value_range * 0.05:
-                        s1 = 10
-                    elif dist_close_poc <= value_range * 0.80:
-                        s1 = (1 - (dist_close_poc - value_range*0.05)/(value_range*0.75)) * 10
-                    else:
-                        s1 = 0
-
-                    # score3
-                    s3 = 5 if row["BS_BAR_STATUS"]=="GREEN" else 0
-
-                    # score4
-                    s4 = 5 if (float(row["BS_OPEN_PRICE"])>poc and row["BS_BAR_STATUS"]=="GREEN") else 0
-
-                    # score5
-                    dist_poc_val = abs(poc - val)
-                    if dist_poc_val <= value_range*0.10:
-                        s5 = 5
-                    elif dist_poc_val <= value_range*0.40:
-                        s5 = (1-(dist_poc_val-value_range*0.10)/(value_range*0.30))*5
-                    else:
-                        s5 = 0
-
-                    total = s1+s2+s3+s4+s5
-                    final = (total/40)*100
-
-                    poc_score_lines.append(f"""
-PERIOD: {row["FRVP_PERIOD_TYPE"]}
-HIGHEST_DATE: {row["FRVP_HIGHEST_DATE"]}
-
-VAL: {f2(val)} | POC: {f2(poc)} | VAH: {f2(vah)}
-VWAP: {f2(row["VWAP"])}
-
-score1 (close→poc): {f2(s1)}
-score2 (cluster): {f2(s2)}
-score3 (green): {f2(s3)}
-score4 (contactless): {f2(s4)}
-score5 (poc→val): {f2(s5)}
-
-TOTAL: {f2(total)} → FINAL_poc puan: {f2(final)}
-
-📊 VWAP
-VWAP_STATUS: {f2(r.get("VWAP_STATUS"))}
--------------------------------------------
-""")
-
-            poc_score_text = "\n".join(poc_score_lines)
-
-            rank_val = "-" if pd.isna(r.get("RANK")) else int(float(r["RANK"]))
-            triage_val = f2(r.get("TRIAGE_SCORE"))
-
-            f.write(f"""
-===================== {symbol} =====================
-
-📅 Gün: {day}
-
-🏆 TRADEOPS_RANK: {rank_val} | TRIAGE_SCORE: {triage_val}
-
-📊 Cluster: {cluster_count}
-
-🧠 POC SCORE DETAIL
-{poc_score_text}
-
-📉 EMA
-EMA_STATUS: {f2(r.get("EMA_STATUS"))}
-EMA3: {f2(r.get("EMA3"))} | EMA5: {f2(r.get("EMA5"))} | EMA14: {f2(r.get("EMA14"))} | EMA20: {f2(r.get("EMA20"))}
-EMA 5-20 Status: {r.get("EMA_STATUS_5_20")} | Cross: {r.get("EMA_CROSS_5_20")} | Days: {r.get("EMA_DAYS_SINCE_CROSS_5_20")}
-EMA 3-20 Status: {r.get("EMA_STATUS_3_20")} | Cross: {r.get("EMA_CROSS_3_20")} | Days: {r.get("EMA_DAYS_SINCE_CROSS_3_20")}
-EMA 3-14 Status: {r.get("EMA_STATUS_3_14")} | Cross: {r.get("EMA_CROSS_3_14")} | Days: {r.get("EMA_DAYS_SINCE_CROSS_3_14")}
-
-📈 RSI
-RSI_STATUS: {r.get("RSI_STATUS_TXT")}
-RSI: {f2(r.get("RSI"))} | RSI_MA: {f2(r.get("RSI_MA"))}
-Status: {r.get("RSI_STATUS")} | Cross: {r.get("RSI_CROSS")} | Days Ago: {r.get("RSI_CROSS_DAYS_AGO")}
-
-💸 MFI
-MFI_STATUS: {r.get("MFI_STATUS")}
-MFI: {f2(r.get("MFI"))} | Yesterday: {f2(r.get("MFI_YESTERDAY"))} | Avg12: {f2(r.get("MFI_12DAY_AVG"))}
-Direction: {r.get("MFI_DIRECTION")}
-
-📦 VOLUME
-VOL_STATUS: {r.get("VOL_STATUS_TXT")}
-Last: {r.get("VOL_LASTDAY")} | Avg5: {r.get("VOL_AVG_5DAY")} | Avg10: {r.get("VOL_AVG_10DAY")} | Avg20: {r.get("VOL_AVG_20DAY")}
-Status: {r.get("VOL_STATUS")}
-
-------------------------------------------------------------
-""")
-            
-        return log_file
-
     # ============================================================
     # OUTPUT / TELEGRAM
     # ============================================================
