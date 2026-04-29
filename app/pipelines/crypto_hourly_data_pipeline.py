@@ -35,6 +35,7 @@ from app.services.ind_end_dates_service import IndEndDatesService
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 from app.services.master_score_service import MasterScoreService
 from app.services.watch_signal_realised_close_service import WatchSignalRealisedCloseService # type: ignore
+from app.services.detail_log_service import trigger_detailed_log
 
 
 @dataclass(frozen=True)
@@ -618,6 +619,8 @@ async def run_binance_hourly_data_pipeline(repo, flags: BinanceHourlyDataPipelin
             table='cloned_focus_symbol_list',
             sheet_name= 'ALL_SYMBOLS_STATUS',
             replace_append = 'replace')
+        
+        trigger_detailed_log()
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:

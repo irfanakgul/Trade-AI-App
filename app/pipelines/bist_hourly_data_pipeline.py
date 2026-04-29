@@ -35,6 +35,7 @@ from app.services.ind_master_combined_indicators_service import IndMasterCombine
 
 from app.services.master_score_service import MasterScoreService # type: ignore
 from app.services.watch_signal_realised_close_service import WatchSignalRealisedCloseService # type: ignore
+from app.services.detail_log_service import trigger_detailed_log
 
 @dataclass(frozen=True)
 class BistHourlyDataPipelineFlags:
@@ -699,6 +700,8 @@ async def run_bist_hourly_data_pipeline(repo, flags: BistHourlyDataPipelineFlags
             table='cloned_focus_symbol_list',
             sheet_name= 'ALL_SYMBOLS_STATUS',
             replace_append = 'replace')
+        
+        trigger_detailed_log()
 
         print(
             f"[MASTER-FINAL] done ({exchange}) "

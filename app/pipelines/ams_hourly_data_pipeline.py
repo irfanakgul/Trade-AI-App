@@ -33,6 +33,7 @@ from app.services.ind_end_dates_service import IndEndDatesService # type: ignore
 from app.services.ind_master_combined_indicators_service import IndMasterCombinedIndicatorsService # type: ignore
 from app.services.master_score_service import MasterScoreService
 from app.services.watch_signal_realised_close_service import WatchSignalRealisedCloseService # type: ignore
+from app.services.detail_log_service import trigger_detailed_log
 
 @dataclass(frozen=True)
 class EuronextHourlyDataPipelineFlags:
@@ -681,6 +682,8 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
             table=f"{exc_name}_master_final_combined",
             sheet_name= f'MASTER_IND_{exc_name.upper()}',
             replace_append = 'replace')
+        
+        trigger_detailed_log()
 
         print(
             f"[MASTER-FINAL] done ({exchange}) "
