@@ -683,7 +683,7 @@ async def run_euronext_hourly_data_pipeline(repo, flags: EuronextHourlyDataPipel
             sheet_name= f'MASTER_IND_{exc_name.upper()}',
             replace_append = 'replace')
         
-        trigger_detailed_log(log_file="ams_tech_log.txt")
+        trigger_detailed_log(log_file="ams_tech_log.txt",schema="gold",table="ams_master_final_combined")
 
         print(
             f"[MASTER-FINAL] done ({exchange}) "

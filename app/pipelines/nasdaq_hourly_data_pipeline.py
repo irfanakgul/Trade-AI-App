@@ -612,7 +612,7 @@ async def run_nasdaq_hourly_data_pipeline(repo, flags: NasdaqHourlyDataPipelineF
             sheet_name= 'ALL_SYMBOLS_STATUS',
             replace_append = 'replace')
         
-        trigger_detailed_log(log_file="nasdaq_tech_log.txt")
+        trigger_detailed_log(log_file="nasdaq_tech_log.txt",schema="gold",table="nasdaq_master_final_combined")
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:

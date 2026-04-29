@@ -230,8 +230,8 @@ S1: {s1} | S2: {s2} | S4: {s4}
             
     return log_file
 
-def trigger_detailed_log(log_file="tech_log.txt"):
-    df = fn_read_data_cloud('gold','bist_master_final_combined')
+def trigger_detailed_log(log_file="tech_log.txt",schema='gold',table='bist_master_final_combined'):
+    df = fn_read_data_cloud(schema,table)
     log_file = _log_technical_summary(df,log_file=log_file)
     telegram_send_document(log_file, title="TECH LOG")
 

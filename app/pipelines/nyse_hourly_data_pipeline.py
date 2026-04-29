@@ -612,7 +612,7 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
             sheet_name= 'ALL_SYMBOLS_STATUS',
             replace_append = 'replace')
         
-        trigger_detailed_log()
+        trigger_detailed_log(log_file="nsye_tech_log.txt",schema="gold",table="nsye_master_final_combined")
         
         print(f"✅✅✅  [IND-MASTER] DONE SUCCESFULLY! | exchange={exchange} ✅✅✅")
     else:
@@ -681,7 +681,6 @@ async def run_nyse_hourly_data_pipeline(repo, flags: NyseHourlyDataPipelineFlags
             sheet_name= f'MASTER_IND_{exc_name.upper()}',
             replace_append = 'replace')
         
-        trigger_detailed_log(log_file="nsye_tech_log.txt")
 
         print(
             f"[MASTER-FINAL] done ({exchange}) "
