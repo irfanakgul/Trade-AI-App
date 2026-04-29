@@ -3917,3 +3917,245 @@ class PostgresRepository:
             "inserted_rows": int(res.rowcount or 0),
             "total_rows_for_exchange": int(total_rows),
         }
+    
+    def delete_indexes_by_exchange(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+    ) -> int:
+        q = text(f"""
+            DELETE FROM {schema}."{table}"
+            WHERE "EXCHANGE" = :exchange;
+        """)
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+    def delete_exchange_index_on_open_time_by_exchange(
+        self,
+        schema: str,
+        table: str,
+        exchange: str,
+    ) -> int:
+        q = text(f"""
+            DELETE FROM {schema}."{table}"
+            WHERE "EXCHANGE" = :exchange;
+        """)
+        with self.engine.begin() as conn:
+            res = conn.execute(q, {"exchange": exchange})
+        return int(res.rowcount or 0)
+    
+    def insert_index_rows(
+        self,
+        schema: str,
+        table: str,
+        rows: list[dict],
+    ) -> int:
+        if not rows:
+            return 0
+
+        q = text(f"""
+            INSERT INTO {schema}."{table}" (
+                "EXCHANGE",
+                "INDEX_LABEL",
+                "INDEX_SYMBOL",
+                "SOURCE_EXCHANGE",
+                "TIMESTAMP",
+                "OPEN",
+                "HIGH",
+                "LOW",
+                "CLOSE",
+                "VOLUME",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,
+                :INDEX_LABEL,
+                :INDEX_SYMBOL,
+                :SOURCE_EXCHANGE,
+                :TIMESTAMP,
+                :OPEN,
+                :HIGH,
+                :LOW,
+                :CLOSE,
+                :VOLUME,
+                :CREATED_AT
+            );
+        """)
+
+        with self.engine.begin() as conn:
+            conn.execute(q, rows)
+
+        return len(rows)
+    
+    def build_exchange_index_open_time_row(
+        self,
+        exchange: str,
+        index_schema: str,
+        index_table: str,
+        open_hour: int,
+        open_minute: int,
+        mid_close_hour: int,
+        mid_close_minute: int,
+    ) -> dict | None:
+        q = text(f"""
+            WITH current_day AS (
+                SELECT MAX("TIMESTAMP"::date) AS dt
+                FROM {index_schema}."{index_table}"
+                WHERE "EXCHANGE" = :exchange
+            ),
+            previous_day AS (
+                SELECT MAX("TIMESTAMP"::date) AS dt
+                FROM {index_schema}."{index_table}", current_day
+                WHERE "EXCHANGE" = :exchange
+                AND "TIMESTAMP"::date < current_day.dt
+            ),
+            current_day_data AS (
+                SELECT *
+                FROM {index_schema}."{index_table}", current_day
+                WHERE "EXCHANGE" = :exchange
+                AND "TIMESTAMP"::date = current_day.dt
+            ),
+            previous_day_close AS (
+                SELECT
+                    "TIMESTAMP" AS close_yesterday_timestamp,
+                    "CLOSE"::double precision AS close_yesterday
+                FROM {index_schema}."{index_table}", previous_day
+                WHERE "EXCHANGE" = :exchange
+                AND "TIMESTAMP"::date = previous_day.dt
+                AND "CLOSE" IS NOT NULL
+                ORDER BY "TIMESTAMP" DESC
+                LIMIT 1
+            ),
+            open_row AS (
+                SELECT
+                    "TIMESTAMP" AS open_timestamp,
+                    "OPEN"::double precision AS open_index
+                FROM current_day_data
+                WHERE "TIMESTAMP"::time >= make_time(:open_hour, :open_minute, 0)
+                AND "OPEN" IS NOT NULL
+                ORDER BY "TIMESTAMP" ASC
+                LIMIT 1
+            ),
+            mid_close_row AS (
+                SELECT
+                    "TIMESTAMP" AS mid_close_timestamp,
+                    "CLOSE"::double precision AS mid_close_index
+                FROM current_day_data
+                WHERE "TIMESTAMP"::time <= make_time(:mid_close_hour, :mid_close_minute, 0)
+                AND "CLOSE" IS NOT NULL
+                ORDER BY "TIMESTAMP" DESC
+                LIMIT 1
+            )
+            SELECT
+                :exchange AS exchange,
+                TO_CHAR(cd.dt, 'DD.MM.YYYY') AS date_str,
+
+                LPAD(CAST(:open_hour AS text), 2, '0') || ':' || LPAD(CAST(:open_minute AS text), 2, '0') AS open_time,
+                LPAD(CAST(:mid_close_hour AS text), 2, '0') || ':' || LPAD(CAST(:mid_close_minute AS text), 2, '0') AS mid_close_time,
+
+                o.open_timestamp,
+                m.mid_close_timestamp,
+
+                p.close_yesterday,
+                o.open_index,
+                m.mid_close_index,
+
+                CASE
+                    WHEN p.close_yesterday < o.open_index
+                    AND o.open_index < m.mid_close_index
+                        THEN 'up_trend'
+
+                    WHEN o.open_index < m.mid_close_index
+                        THEN 'weak_up_trend'
+
+                    ELSE 'down_trend'
+                END AS trend_status,
+
+                CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Amsterdam' AS created_at
+
+            FROM current_day cd
+            CROSS JOIN previous_day_close p
+            CROSS JOIN open_row o
+            CROSS JOIN mid_close_row m;
+        """)
+
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                q,
+                {
+                    "exchange": exchange,
+                    "open_hour": int(open_hour),
+                    "open_minute": int(open_minute),
+                    "mid_close_hour": int(mid_close_hour),
+                    "mid_close_minute": int(mid_close_minute),
+                },
+            ).fetchone()
+
+        if not row:
+            return None
+
+        return {
+            "EXCHANGE": row[0],
+            "DATE": row[1],
+            "OPEN_TIME": row[2],
+            "MID_CLOSE_TIME": row[3],
+            "OPEN_TIMESTAMP": row[4],
+            "MID_CLOSE_TIMESTAMP": row[5],
+            "CLOSE_YESTERDAY": float(row[6]) if row[6] is not None else None,
+            "OPEN_INDEX": float(row[7]) if row[7] is not None else None,
+            "MID_CLOSE_INDEX": float(row[8]) if row[8] is not None else None,
+            "TREND_STATUS": row[9],
+            "CREATED_AT": row[10],
+        }
+    
+    def insert_exchange_index_open_time_rows(
+        self,
+        schema: str,
+        table: str,
+        rows: list[dict],
+        on_conflict_do_nothing: bool = False,
+    ) -> int:
+        if not rows:
+            return 0
+
+        conflict_sql = 'ON CONFLICT ("EXCHANGE", "DATE") DO NOTHING' if on_conflict_do_nothing else ""
+
+        q = text(f"""
+            INSERT INTO {schema}."{table}" (
+                "EXCHANGE",
+                "DATE",
+                "OPEN_TIME",
+                "MID_CLOSE_TIME",
+                "OPEN_TIMESTAMP",
+                "MID_CLOSE_TIMESTAMP",
+                "CLOSE_YESTERDAY",
+                "OPEN_INDEX",
+                "MID_CLOSE_INDEX",
+                "TREND_STATUS",
+                "CREATED_AT"
+            )
+            VALUES (
+                :EXCHANGE,
+                :DATE,
+                :OPEN_TIME,
+                :MID_CLOSE_TIME,
+                :OPEN_TIMESTAMP,
+                :MID_CLOSE_TIMESTAMP,
+                :CLOSE_YESTERDAY,
+                :OPEN_INDEX,
+                :MID_CLOSE_INDEX,
+                :TREND_STATUS,
+                :CREATED_AT
+            )
+            {conflict_sql};
+        """)
+
+        with self.engine.begin() as conn:
+            res = conn.execute(q, rows)
+
+        if on_conflict_do_nothing:
+            return int(res.rowcount or 0)
+
+        return len(rows)

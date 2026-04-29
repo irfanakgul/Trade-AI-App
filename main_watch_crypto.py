@@ -23,8 +23,7 @@ async def main():
         run_watch_ingestion=True,
         run_watch_signal_check=True,
         send_telegram_buy_signal = True,
-        run_watch_calc_2=False,
-        run_watch_calc_3=False,
+        run_buy_focus=True,
         
     )
 
@@ -54,5 +53,4 @@ if __name__ == "__main__":
         if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
             telegram_send_message(
                 title="WATCH PIPELINE ERROR!",
-                text=f"❌ CRYPTO watch pipeline stopt with error!\nERROR: {e}",
-            )
+                text=f"❌ CRYPTO watch pipeline stopt with error!\nERROR: {e}")

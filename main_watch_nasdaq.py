@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 from app.infrastructure.database.connection import Database
 from app.infrastructure.database.repository import PostgresRepository
 from app.pipelines.watch.watch_pipeline import (
-    run_watch_pipeline,
     WatchPipelineFlags,
+    run_watch_pipeline,
 )
 from app.services.telegram_bot_chat_service import telegram_send_message  # type: ignore
 
@@ -21,9 +21,10 @@ async def main():
 
     flags = WatchPipelineFlags(
         run_watch_ingestion=True,
+        run_exchange_index_open_time=True,
         run_watch_signal_check=True,
-        send_telegram_buy_signal = True,
-        run_buy_focus=True
+        run_buy_focus=True,
+        send_telegram_buy_signal=True,
     )
 
     await run_watch_pipeline(
@@ -31,26 +32,36 @@ async def main():
         flags=flags,
         exchange="NASDAQ",
         exc_name="nasdaq",
+
         signal_open_hour=15,
         signal_open_minute=30,
         signal_close_hour=16,
         signal_close_minute=15,
-        top_n = 10
+
+        index_open_hour=15,
+        index_open_minute=30,
+        index_mid_close_hour=16,
+        index_mid_close_minute=15,
+
+        top_n=10,
     )
 
-# asyncio.run(main())
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+
         if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
             telegram_send_message(
-                title="WATCH PIPELINE run",
-                text="✅ NASDAQ watch pipeline has been completed succesfuly",
+                title="WATCH PIPELINE RUN",
+                text="✅ NASDAQ watch pipeline has been completed successfully",
             )
+
     except Exception as e:
         print(e)
+
         if os.getenv("ENV_TELEGRAM_NOTIF") == "True":
             telegram_send_message(
                 title="WATCH PIPELINE ERROR!",
-                text=f"❌ NASDAQ watch pipeline stopt with error!\nERROR: {e}",)
+                text=f"❌ NASDAQ watch pipeline stopped with error!\nERROR: {e}",
+            )

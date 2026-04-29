@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+
 from app.services.telegram_bot_chat_service import telegram_send_message  # type: ignore
 
 from app.infrastructure.database.repository import PostgresRepository
@@ -9,19 +10,24 @@ from app.services.watch_dataset_build_service import (
     WatchDatasetBuildService,
     WatchDatasetBuildConfig,
 )
-
-from app.services.watch_signal_check_service import ( # type: ignore
+from app.services.watch_signal_check_service import (  # type: ignore
     WatchSignalCheckService,
     WatchSignalCheckConfig,
 )
+from app.services.watch_exchange_index_open_time_service import (
+    WatchExchangeIndexOpenTimeService,
+    WatchExchangeIndexOpenTimeConfig,
+)
+
 
 @dataclass(frozen=True)
 class WatchPipelineFlags:
     run_watch_ingestion: bool = True
+    run_exchange_index_open_time: bool = True
     run_watch_signal_check: bool = False
     run_buy_focus: bool = True
-    run_watch_calc_3: bool = False
     send_telegram_buy_signal: bool = False
+    run_exchange_index_open_time: bool = False
 
 
 async def run_watch_pipeline(
@@ -33,8 +39,11 @@ async def run_watch_pipeline(
     signal_open_minute: int,
     signal_close_hour: int,
     signal_close_minute: int,
+    index_open_hour: int,
+    index_open_minute: int,
+    index_mid_close_hour: int,
+    index_mid_close_minute: int,
     top_n: int | None = None,
-    
 ):
     exchange = exchange.upper().strip()
     exc_name = exc_name.lower().strip()
@@ -51,20 +60,20 @@ async def run_watch_pipeline(
         print(f"[WATCH-INGESTION] {exchange} started...")
 
         svc = WatchDatasetBuildService(
-        repo=repo,
-        cfg=WatchDatasetBuildConfig(
-            exchange=exchange,
-            source_schema="gold",
-            source_table=f"{exc_name}_evaluation_master_score",
-            source_where_sql=None,
-            target_schema="prod",
-            target_table=f"{exc_name}_watch_dataset",
-            max_retries=3,
-            retry_wait_seconds=3,
-            tv_n_bars=500,
-            top_n=top_n,
-        ),
-    )
+            repo=repo,
+            cfg=WatchDatasetBuildConfig(
+                exchange=exchange,
+                source_schema="gold",
+                source_table=f"{exc_name}_evaluation_master_score",
+                source_where_sql=None,
+                target_schema="prod",
+                target_table=f"{exc_name}_watch_dataset",
+                max_retries=3,
+                retry_wait_seconds=3,
+                tv_n_bars=500,
+                top_n=top_n,
+            ),
+        )
 
         result = await svc.run(exchange=exchange)
 
@@ -78,7 +87,46 @@ async def run_watch_pipeline(
         print(f"❌ [WATCH-INGESTION] {exchange} skipped!")
 
     # ----------------------------------------------------------
-    # 2) BUY SIGNAL CHECK 
+    # 2) EXCHANGE INDEX ON OPEN TIME
+    # ----------------------------------------------------------
+    if flags.run_exchange_index_open_time:
+        print(f"[INDEX-OPEN] {exchange} started...")
+
+        svc = WatchExchangeIndexOpenTimeService(
+            repo=repo,
+            cfg=WatchExchangeIndexOpenTimeConfig(
+                job_name=f"index_open_time_{exc_name}",
+                tv_n_bars=1000,
+            ),
+        )
+
+        result = svc.run(
+            exchange=exchange,
+            index_schema="prod",
+            index_table="indexes",
+            output_schema="prod",
+            output_table="exchange_index_on_open_time",
+            log_schema="logs",
+            log_table="log_exchange_index_on_open_time",
+            open_hour=index_open_hour,
+            open_minute=index_open_minute,
+            mid_close_hour=index_mid_close_hour,
+            mid_close_minute=index_mid_close_minute,
+            is_truncate_exchange=True,
+        )
+
+        print(
+            f"[INDEX-OPEN] {exchange} completed. "
+            f"index_rows={result['index_rows']} "
+            f"output_rows={result['output_rows']} "
+            f"log_rows={result['log_rows']} "
+            f"trend_status={result.get('trend_status')}"
+        )
+    else:
+        print(f"❌ [INDEX-OPEN] {exchange} skipped!")
+
+    # ----------------------------------------------------------
+    # 3) BUY SIGNAL CHECK
     # ----------------------------------------------------------
     if flags.run_watch_signal_check:
         print(f"[SIGNAL-CHECK] {exchange} started...")
@@ -109,7 +157,7 @@ async def run_watch_pipeline(
             telegram_send_message(
                 title=f"✅ 💰 BUY SIGNAL: {exc_name.upper()}",
                 text=result["telegram_text"],
-                channel='trades'
+                channel="trades",
             )
 
         print(
@@ -124,7 +172,7 @@ async def run_watch_pipeline(
         print(f"❌ [SIGNAL-CHECK] {exchange} skipped!")
 
     # ----------------------------------------------------------
-    # 3) run_buy_focus:
+    # 4) BUY FOCUS
     # ----------------------------------------------------------
     if flags.run_buy_focus:
         print(f"[run_buy_focus] {exchange} started...")
@@ -146,4 +194,3 @@ async def run_watch_pipeline(
         )
     else:
         print(f"❌ [run_buy_focus] {exchange} skipped!")
-
